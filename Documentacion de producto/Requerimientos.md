@@ -1,1 +1,12 @@
 
+## Requerimientos no funcionales
+
+- **Tiempo de respuesta**  
+- **Escalabilidad**  
+- **Portabilidad**  
+- **Compatibilidad**  
+- **Fiabilidad**  
+- **Mantenimiento**  
+- **Disponibilidad**  
+- **Seguridad**  
+- **Usabilidad**
