@@ -7,6 +7,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from ".
 import { ArrowLeft } from "lucide-react";
 import { motion } from "motion/react";
 import { DynamicBackground } from "./DynamicBackground";
+import { DuplicateUserAlert } from "./DuplicateUserAlert";
+import { authHelpers } from "../utils/supabase/client";
+import { toast } from "sonner@2.0.3";
 import logo from 'figma:asset/2b2a7f5a35cc2954a161c6344ab960a250a1a60d.png';
 
 interface RegistrationPageProps {
@@ -14,15 +17,17 @@ interface RegistrationPageProps {
   onBack: () => void;
   onComplete: (aiLevel: 'beginner' | 'intermediate' | 'advanced', skipOnboarding?: boolean) => void;
   onTakeQuiz: () => void;
+  onRegistrationSuccess: (user: any, session: any) => void;
+  aiLevel?: 'beginner' | 'intermediate' | 'advanced' | null;
 }
 
-export function RegistrationPage({ role, onBack, onComplete, onTakeQuiz }: RegistrationPageProps) {
+export function RegistrationPage({ role, onBack, onComplete, onTakeQuiz, onRegistrationSuccess, aiLevel }: RegistrationPageProps) {
   const [formData, setFormData] = useState({
     name: '',
     email: '',
     password: '',
     confirmPassword: '',
-    aiExperience: '', // New AI level field
+    aiExperience: aiLevel || '', // New AI level field
     // Role-specific fields
     level: '',
     institution: '',
@@ -31,6 +36,7 @@ export function RegistrationPage({ role, onBack, onComplete, onTakeQuiz }: Regis
     workArea: '',
     company: ''
   });
+  const [isLoading, setIsLoading] = useState(false);
 
   const getRoleConfig = () => {
     switch (role) {
@@ -39,7 +45,7 @@ export function RegistrationPage({ role, onBack, onComplete, onTakeQuiz }: Regis
           title: 'Registro de Alumno 🎓',
           color: '#E3701B',
           fields: [
-            { key: 'level', label: 'Nivel Académico', type: 'select', options: ['Primaria', 'Secundaria', 'Preparatoria', 'Universidad', 'Posgrado'] },
+            { key: 'level', label: 'Nivel Académico', type: 'select', options: ['Preparatoria', 'Universidad', 'Posgrado'] },
             { key: 'institution', label: 'Institución', type: 'input' }
           ]
         };
@@ -72,21 +78,126 @@ export function RegistrationPage({ role, onBack, onComplete, onTakeQuiz }: Regis
     setFormData(prev => ({ ...prev, [key]: value }));
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    // Basic validation
-    if (formData.password !== formData.confirmPassword) {
-      alert('Las contraseñas no coinciden');
-      return;
+    setIsLoading(true);
+
+    try {
+      // Enhanced validation
+      if (!formData.name.trim()) {
+        toast.error('El nombre es requerido');
+        return;
+      }
+      if (!formData.email.trim()) {
+        toast.error('El correo electrónico es requerido');
+        return;
+      }
+      if (formData.password.length < 6) {
+        toast.error('La contraseña debe tener al menos 6 caracteres');
+        return;
+      }
+      if (formData.password !== formData.confirmPassword) {
+        toast.error('Las contraseñas no coinciden');
+        return;
+      }
+      if (!formData.aiExperience) {
+        toast.error('Por favor selecciona tu nivel de experiencia en IA');
+        return;
+      }
+
+      console.log("Attempting registration for:", formData.email);
+
+      // Prepare user data for backend
+      const userData = {
+        name: formData.name.trim(),
+        email: formData.email.trim().toLowerCase(),
+        password: formData.password,
+        role,
+        aiExperience: formData.aiExperience
+      };
+
+      // Add role-specific fields
+      config.fields.forEach(field => {
+        if (formData[field.key as keyof typeof formData]) {
+          userData[field.key] = formData[field.key as keyof typeof formData];
+        }
+      });
+
+      // Register with backend
+      const { data, error } = await authHelpers.signUp(formData.email.trim().toLowerCase(), formData.password, userData);
+
+      if (error) {
+        console.error("Registration error:", error);
+        
+        // Handle specific error cases
+        if (error.message && (
+            error.message.includes('Ya existe una cuenta con este correo') ||
+            error.message.includes('already registered') ||
+            error.message.includes('email address not available')
+          )) {
+          toast.error("Ya existe una cuenta con este correo electrónico");
+          
+          // Show option to go to login
+          setTimeout(() => {
+            toast.info("¿Ya tienes cuenta?", {
+              duration: 5000,
+              action: {
+                label: "Iniciar Sesión",
+                onClick: () => {
+                  // First go back to home, then navigate to login
+                  onBack();
+                  // Use a small delay to ensure state change happens
+                  setTimeout(() => {
+                    // This will be handled by the parent component
+                    window.dispatchEvent(new CustomEvent('navigate-to-login'));
+                  }, 100);
+                }
+              }
+            });
+          }, 2000);
+          return;
+        }
+        
+        toast.error(error.message || "Error al registrarse");
+        return;
+      }
+
+      console.log("Registration successful");
+      toast.success("¡Cuenta creada exitosamente!");
+      
+      // If we have session data from auto-login, use it
+      if (data && data.session) {
+        onRegistrationSuccess(data.user, data.session);
+        return;
+      }
+      
+      // If registration succeeded but requires manual login
+      if (data && data.requiresManualLogin) {
+        console.log("Registration successful but requires manual login");
+        toast.success("Cuenta creada exitosamente");
+        toast.info("Por favor, inicia sesión manualmente", { duration: 4000 });
+        
+        // Navigate to login after a brief delay
+        setTimeout(() => {
+          onBack();
+          setTimeout(() => {
+            window.dispatchEvent(new CustomEvent('navigate-to-login'));
+          }, 100);
+        }, 2000);
+        return;
+      }
+      
+      // Otherwise, proceed with the original flow
+      const aiLevel = formData.aiExperience as 'beginner' | 'intermediate' | 'advanced';
+      const skipOnboarding = aiLevel === 'advanced';
+      onComplete(aiLevel, skipOnboarding);
+
+    } catch (error) {
+      console.error("Registration error:", error);
+      toast.error("Error de conexión. Verifica tu internet e intenta nuevamente.");
+    } finally {
+      setIsLoading(false);
     }
-    if (!formData.aiExperience) {
-      alert('Por favor selecciona tu nivel de experiencia en IA');
-      return;
-    }
-    
-    const aiLevel = formData.aiExperience as 'beginner' | 'intermediate' | 'advanced';
-    const skipOnboarding = aiLevel === 'advanced';
-    onComplete(aiLevel, skipOnboarding);
   };
 
   return (
@@ -184,7 +295,10 @@ export function RegistrationPage({ role, onBack, onComplete, onTakeQuiz }: Regis
               {/* AI Experience Level - Required for all roles */}
               <div className="border-t pt-4">
                 <Label htmlFor="aiExperience" className="text-purple-700">Nivel de experiencia en IA *</Label>
-                <Select onValueChange={(value) => handleInputChange('aiExperience', value)}>
+                <Select 
+                  value={formData.aiExperience} 
+                  onValueChange={(value) => handleInputChange('aiExperience', value)}
+                >
                   <SelectTrigger className="mt-1 border-purple-200">
                     <SelectValue placeholder="Selecciona tu nivel de experiencia en IA" />
                   </SelectTrigger>
@@ -195,14 +309,23 @@ export function RegistrationPage({ role, onBack, onComplete, onTakeQuiz }: Regis
                   </SelectContent>
                 </Select>
                 
-                {formData.aiExperience === 'advanced' && (
+                {formData.aiExperience && (
                   <motion.div
                     initial={{ opacity: 0, height: 0 }}
                     animate={{ opacity: 1, height: 'auto' }}
-                    className="mt-3 p-3 bg-green-50 border border-green-200 rounded-lg"
+                    className="mt-3 p-3 bg-blue-50 border border-blue-200 rounded-lg"
                   >
-                    <p className="text-sm text-green-700 mb-2">
-                      ✨ ¡Excelente! Con tu nivel avanzado podrás acceder directamente a cursos especializados.
+                    <p className="text-sm text-blue-700">
+                      ✅ Nivel seleccionado: {
+                        formData.aiExperience === 'beginner' ? '🌱 Principiante' :
+                        formData.aiExperience === 'intermediate' ? '📚 Intermedio' :
+                        '🚀 Avanzado'
+                      }
+                      {formData.aiExperience === 'advanced' && (
+                        <span className="block mt-1 text-green-600">
+                          ✨ ¡Con tu nivel avanzado podrás acceder directamente a cursos especializados!
+                        </span>
+                      )}
                     </p>
                   </motion.div>
                 )}
@@ -263,8 +386,9 @@ export function RegistrationPage({ role, onBack, onComplete, onTakeQuiz }: Regis
                   type="submit"
                   className="w-full mt-6 text-white transition-all duration-300 hover:shadow-lg"
                   style={{ backgroundColor: config.color }}
+                  disabled={isLoading}
                 >
-                  Crear Cuenta
+                  {isLoading ? "Creando cuenta..." : "Crear Cuenta"}
                 </Button>
               </motion.div>
             </form>

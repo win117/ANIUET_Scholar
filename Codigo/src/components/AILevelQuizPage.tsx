@@ -10,6 +10,7 @@ import logo from 'figma:asset/2b2a7f5a35cc2954a161c6344ab960a250a1a60d.png';
 interface AILevelQuizPageProps {
   onBack: () => void;
   onComplete: (level: 'beginner' | 'intermediate' | 'advanced') => void;
+  onApplyLevel?: (level: 'beginner' | 'intermediate' | 'advanced') => void;
 }
 
 interface Question {
@@ -66,7 +67,7 @@ const questions: Question[] = [
   }
 ];
 
-export function AILevelQuizPage({ onBack, onComplete }: AILevelQuizPageProps) {
+export function AILevelQuizPage({ onBack, onComplete, onApplyLevel }: AILevelQuizPageProps) {
   const [currentQuestion, setCurrentQuestion] = useState(0);
   const [answers, setAnswers] = useState<number[]>([]);
   const [showResult, setShowResult] = useState(false);
@@ -166,11 +167,18 @@ export function AILevelQuizPage({ onBack, onComplete }: AILevelQuizPageProps) {
 
                 <div className="flex flex-col gap-3">
                   <Button
-                    onClick={() => onComplete(level)}
+                    onClick={() => {
+                      if (onApplyLevel) {
+                        onApplyLevel(level);
+                        onBack(); // Volver al registro con el nivel aplicado
+                      } else {
+                        onComplete(level);
+                      }
+                    }}
                     className="w-full text-white hover:shadow-lg transition-all duration-300"
                     style={{ backgroundColor: levelInfo.color }}
                   >
-                    Continuar con este nivel
+                    {onApplyLevel ? 'Aplicar este nivel al registro' : 'Continuar con este nivel'}
                   </Button>
                   
                   <Button

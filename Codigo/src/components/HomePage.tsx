@@ -172,6 +172,25 @@ export function HomePage({ onRoleSelect, onLogin }: HomePageProps) {
             </Button>
           </motion.div>
         </motion.div>
+
+        {/* Test Link */}
+        <motion.div 
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ duration: 0.6, delay: 0.7 }}
+          className="text-center pt-8 border-t border-gray-200 mt-8"
+        >
+          <motion.div whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}>
+            <Button 
+              onClick={() => window.location.href = '?test=auth'}
+              variant="ghost" 
+              size="sm"
+              className="text-xs text-gray-500 hover:text-gray-700"
+            >
+              🔧 Pruebas del Sistema de Autenticación
+            </Button>
+          </motion.div>
+        </motion.div>
       </main>
     </div>
   );

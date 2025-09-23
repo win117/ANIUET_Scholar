@@ -1,10 +1,12 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
 import { Button } from "./ui/button";
 import { Badge } from "./ui/badge";
 import { Progress } from "./ui/progress";
 import { motion } from "motion/react";
 import { DynamicBackground } from "./DynamicBackground";
+import { apiHelpers } from "../utils/supabase/client";
+import { toast, Toaster } from "sonner@2.0.3";
 import { 
   ArrowLeft, 
   BookOpen, 
@@ -30,6 +32,7 @@ interface CourseMapPageProps {
   course: any;
   userRole: 'student' | 'teacher' | 'professional' | null;
   onBack: () => void;
+  session?: any;
 }
 
 interface Node {
@@ -196,11 +199,53 @@ const courseNodes: Record<string, Node[]> = {
   ]
 };
 
-export function CourseMapPage({ course, userRole, onBack }: CourseMapPageProps) {
+export function CourseMapPage({ course, userRole, onBack, session }: CourseMapPageProps) {
   const [selectedNode, setSelectedNode] = useState<Node | null>(null);
-  const [completedNodes, setCompletedNodes] = useState<Set<string>>(new Set(['welcome', 'basics', 'history', 'setup']));
+  const [completedNodes, setCompletedNodes] = useState<Set<string>>(new Set());
+  const [userProgress, setUserProgress] = useState<any>(null);
+  const [isLoading, setIsLoading] = useState(true);
 
-  const nodes = courseNodes[course.id] || courseNodes['intro-ai'];
+  // Use course lessons if available, otherwise fall back to predefined nodes
+  const nodes = course.lessons ? course.lessons.map((lesson: any, index: number) => ({
+    id: lesson.id,
+    title: lesson.title,
+    type: lesson.type || 'reading',
+    status: 'locked',
+    position: { 
+      x: 20 + (index % 3) * 30, 
+      y: 80 - Math.floor(index / 3) * 20 
+    },
+    connections: index < course.lessons.length - 1 ? [course.lessons[index + 1].id] : [],
+    xpReward: lesson.xp || 50,
+    estimatedTime: '15 min',
+    description: lesson.title,
+    prerequisites: index > 0 ? [course.lessons[index - 1].id] : undefined
+  })) : courseNodes[course.id] || courseNodes['intro-ai'];
+
+  useEffect(() => {
+    loadCourseProgress();
+  }, [course.id, session]);
+
+  const loadCourseProgress = async () => {
+    if (!session?.access_token) {
+      setIsLoading(false);
+      return;
+    }
+
+    try {
+      const userCoursesData = await apiHelpers.getUserCourses(session.access_token);
+      const enrollment = userCoursesData.enrollments?.find((e: any) => e.courseId === course.id);
+      
+      if (enrollment) {
+        setUserProgress(enrollment);
+        setCompletedNodes(new Set(enrollment.completedLessons || []));
+      }
+    } catch (error) {
+      console.error('Error loading course progress:', error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
   
   const getNodeIcon = (type: string) => {
     switch (type) {
@@ -253,13 +298,34 @@ export function CourseMapPage({ course, userRole, onBack }: CourseMapPageProps) 
     }
   };
 
-  const handleStartNode = (node: Node) => {
-    // Simular completar el nodo
-    setCompletedNodes(prev => new Set([...prev, node.id]));
-    setSelectedNode(null);
-    
-    // Aquí iría la lógica real para navegar al contenido del nodo
-    alert(`Iniciando: ${node.title}`);
+  const handleStartNode = async (node: Node) => {
+    if (!session?.access_token) {
+      toast.error('Necesitas iniciar sesión para acceder al contenido');
+      return;
+    }
+
+    try {
+      // Update progress in backend
+      await apiHelpers.updateCourseProgress(
+        session.access_token, 
+        course.id, 
+        node.id, 
+        node.xpReward
+      );
+
+      // Update local state
+      setCompletedNodes(prev => new Set([...prev, node.id]));
+      setSelectedNode(null);
+      
+      toast.success(`¡Has completado: ${node.title}! +${node.xpReward} XP`);
+      
+      // Reload progress
+      loadCourseProgress();
+      
+    } catch (error) {
+      console.error('Error updating progress:', error);
+      toast.error('Error al actualizar el progreso');
+    }
   };
 
   const isImpressiveTitle = course.id === 'audio-detection' || course.type === 'crash-course';

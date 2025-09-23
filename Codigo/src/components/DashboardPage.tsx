@@ -1,10 +1,13 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
 import { Button } from "./ui/button";
 import { Badge } from "./ui/badge";
 import { Progress } from "./ui/progress";
 import { motion } from "motion/react";
 import { DynamicBackground } from "./DynamicBackground";
+import { DebugPanel } from "./DebugPanel";
+import { apiHelpers } from "../utils/supabase/client";
+import { toast } from "sonner@2.0.3";
 import { 
   BookOpen, 
   TrendingUp, 
@@ -42,84 +45,131 @@ interface DashboardPageProps {
   onCourseSelect: (course: any) => void;
   onTeacherManagement: () => void;
   onAIAssistant: () => void;
+  userProfile?: any;
+  session?: any;
+  onMyCourses?: () => void;
+  onAchievements?: () => void;
+  onCommunity?: () => void;
+  onProfile?: () => void;
+  onSettings?: () => void;
 }
 
-export function DashboardPage({ role, aiLevel, onLogout, onCourseSelect, onTeacherManagement, onAIAssistant }: DashboardPageProps) {
+export function DashboardPage({ role, aiLevel, onLogout, onCourseSelect, onTeacherManagement, onAIAssistant, userProfile, session, onMyCourses, onAchievements, onCommunity, onProfile, onSettings }: DashboardPageProps) {
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [availableCourses, setAvailableCourses] = useState([]);
+  const [userCourses, setUserCourses] = useState(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [enrollmentLoading, setEnrollmentLoading] = useState(false);
+
+  useEffect(() => {
+    loadDashboardData();
+  }, [session]);
+
+  const loadDashboardData = async () => {
+    try {
+      setIsLoading(true);
+      console.log('Loading dashboard data...');
+      
+      // Load available courses
+      const coursesData = await apiHelpers.getAvailableCourses();
+      console.log('Available courses loaded:', coursesData);
+      setAvailableCourses(coursesData.courses || []);
+
+      // Load user's courses if authenticated
+      if (session?.access_token) {
+        try {
+          const userCoursesData = await apiHelpers.getUserCourses(session.access_token);
+          console.log('User courses loaded:', userCoursesData);
+          setUserCourses(userCoursesData);
+        } catch (error) {
+          console.log('Error loading user courses, setting defaults:', error);
+          setUserCourses({ enrolledCourses: [], enrollments: [] });
+        }
+      } else {
+        console.log('No session token, setting empty user courses');
+        setUserCourses({ enrolledCourses: [], enrollments: [] });
+      }
+
+    } catch (error) {
+      console.error('Error loading dashboard data:', error);
+      toast.error('Error cargando datos del dashboard');
+      // Set fallback data
+      setAvailableCourses([]);
+      setUserCourses({ enrolledCourses: [], enrollments: [] });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleCourseEnroll = async (courseId: string) => {
+    if (!session?.access_token) {
+      toast.error('Necesitas iniciar sesión para inscribirte a cursos');
+      return;
+    }
+
+    console.log('Attempting enrollment for course:', courseId);
+    console.log('Current enrolled courses:', userCourses?.enrolledCourses);
+
+    // Check if already enrolled to prevent duplicates
+    if (userCourses?.enrolledCourses?.includes(courseId)) {
+      toast.info('Ya estás inscrito en este curso');
+      return;
+    }
+
+    setEnrollmentLoading(true);
+    try {
+      const result = await apiHelpers.enrollInCourse(session.access_token, courseId);
+      console.log('Enrollment result:', result);
+      
+      if (result.success) {
+        toast.success('¡Te has inscrito al curso exitosamente!');
+        if (result.xpGained) {
+          toast.success(`+${result.xpGained} XP ganados!`);
+        }
+      }
+      
+      // Reload user courses
+      await loadDashboardData();
+    } catch (error) {
+      console.error('Error enrolling in course:', error);
+      
+      if (error.message?.includes('ya inscrito') || 
+          error.message?.includes('already enrolled') ||
+          error.message?.includes('Ya estás inscrito')) {
+        toast.info('Ya estás inscrito en este curso');
+        // Reload data to ensure UI is in sync
+        await loadDashboardData();
+      } else {
+        toast.error('Error al inscribirse al curso: ' + error.message);
+      }
+    } finally {
+      setEnrollmentLoading(false);
+    }
+  };
 
   const getRoleConfig = () => {
+    // Get real user data or defaults for new users
+    const realLevel = userProfile?.level || 1;
+    const realXP = userProfile?.xp || 0;
+    const realStreak = userProfile?.currentStreak || 0;
+    
     switch (role) {
       case 'student':
         return {
           title: 'Mi Dashboard de Aprendizaje',
           color: '#E3701B',
           icon: '🎓',
-          level: aiLevel === 'advanced' ? 25 : aiLevel === 'intermediate' ? 15 : 8,
-          xp: aiLevel === 'advanced' ? 4200 : aiLevel === 'intermediate' ? 2450 : 850,
-          streak: 7,
-          courses: [
-            // Rutas progresivas para estudiantes
-            {
-              id: 'intro-ai',
-              title: '🤖 Fundamentos de IA',
-              type: 'foundation',
-              progress: aiLevel === 'advanced' ? 100 : aiLevel === 'intermediate' ? 75 : 45,
-              difficulty: 'Principiante',
-              lessons: 12,
-              completedLessons: aiLevel === 'advanced' ? 12 : aiLevel === 'intermediate' ? 9 : 5,
-              color: '#4285F4',
-              isUnlocked: true,
-              description: 'Conceptos básicos y aplicaciones de la inteligencia artificial',
-              estimatedTime: '4 semanas'
-            },
-            {
-              id: 'math-ai',
-              title: '📊 Matemáticas para IA',
-              type: 'foundation',
-              progress: aiLevel === 'advanced' ? 90 : aiLevel === 'intermediate' ? 45 : 0,
-              difficulty: 'Intermedio',
-              lessons: 16,
-              completedLessons: aiLevel === 'advanced' ? 14 : aiLevel === 'intermediate' ? 7 : 0,
-              color: '#E3701B',
-              isUnlocked: aiLevel !== 'beginner',
-              description: 'Álgebra lineal, cálculo y estadística aplicada',
-              estimatedTime: '6 semanas'
-            },
-            {
-              id: 'ml-practice',
-              title: '🧠 Machine Learning Práctico',
-              type: 'practice',
-              progress: aiLevel === 'advanced' ? 60 : 0,
-              difficulty: 'Avanzado',
-              lessons: 20,
-              completedLessons: aiLevel === 'advanced' ? 12 : 0,
-              color: '#C4423D',
-              isUnlocked: aiLevel === 'advanced',
-              description: 'Implementación práctica de algoritmos de ML',
-              estimatedTime: '8 semanas'
-            },
-            {
-              id: 'ai-projects',
-              title: '🚀 Proyectos de IA',
-              type: 'project',
-              progress: 0,
-              difficulty: 'Experto',
-              lessons: 10,
-              completedLessons: 0,
-              color: '#10B981',
-              isUnlocked: false,
-              description: 'Desarrolla proyectos completos de inteligencia artificial',
-              estimatedTime: '12 semanas'
-            }
-          ],
+          level: realLevel,
+          xp: realXP,
+          streak: realStreak,
           sidebarItems: [
             { icon: Home, label: 'Dashboard', active: true },
-            { icon: BookOpen, label: 'Mis Cursos' },
-            { icon: Trophy, label: 'Logros' },
+            { icon: BookOpen, label: 'Mis Cursos', action: 'my-courses' },
+            { icon: Trophy, label: 'Logros', action: 'achievements' },
             { icon: Target, label: 'Objetivos' },
-            { icon: Users, label: 'Comunidad' },
-            { icon: User, label: 'Perfil' },
-            { icon: Settings, label: 'Configuración' }
+            { icon: Users, label: 'Comunidad', action: 'community' },
+            { icon: User, label: 'Perfil', action: 'profile' },
+            { icon: Settings, label: 'Configuración', action: 'settings' }
           ]
         };
       case 'teacher':
@@ -127,58 +177,18 @@ export function DashboardPage({ role, aiLevel, onLogout, onCourseSelect, onTeach
           title: 'Panel del Maestro',
           color: '#4285F4',
           icon: '🧑‍🏫',
-          level: 8,
-          xp: 1200,
-          streak: 12,
-          courses: [
-            {
-              id: 'teaching-methods',
-              title: '📚 Metodologías con IA',
-              type: 'methodology',
-              progress: 90,
-              difficulty: 'Avanzado',
-              lessons: 10,
-              completedLessons: 9,
-              color: '#4285F4',
-              isUnlocked: true,
-              description: 'Integra IA en tus métodos de enseñanza',
-              estimatedTime: '3 semanas'
-            },
-            {
-              id: 'digital-assessment',
-              title: '📊 Evaluación Digital',
-              type: 'assessment',
-              progress: 60,
-              difficulty: 'Intermedio',
-              lessons: 8,
-              completedLessons: 5,
-              color: '#E3701B',
-              isUnlocked: true,
-              description: 'Herramientas de evaluación automatizada',
-              estimatedTime: '2 semanas'
-            },
-            {
-              id: 'ai-classroom',
-              title: '🤖 IA en el Aula',
-              type: 'technology',
-              progress: 25,
-              difficulty: 'Intermedio',
-              lessons: 12,
-              completedLessons: 3,
-              color: '#10B981',
-              isUnlocked: true,
-              description: 'Implementa asistentes de IA para la educación',
-              estimatedTime: '4 semanas'
-            }
-          ],
+          level: realLevel,
+          xp: realXP,
+          streak: realStreak,
           sidebarItems: [
             { icon: Home, label: 'Dashboard', active: true },
-            { icon: BookOpen, label: 'Mis Cursos' },
+            { icon: BookOpen, label: 'Mis Cursos', action: 'my-courses' },
             { icon: PlusCircle, label: 'Gestión de Cursos', action: 'management' },
             { icon: BarChart, label: 'Reportes de Alumnos' },
             { icon: Bot, label: 'Asistente IA', action: 'ai-assistant' },
-            { icon: Users, label: 'Mis Estudiantes' },
-            { icon: Settings, label: 'Configuración' }
+            { icon: Users, label: 'Comunidad', action: 'community' },
+            { icon: User, label: 'Perfil', action: 'profile' },
+            { icon: Settings, label: 'Configuración', action: 'settings' }
           ]
         };
       case 'professional':
@@ -186,75 +196,22 @@ export function DashboardPage({ role, aiLevel, onLogout, onCourseSelect, onTeach
           title: 'Dashboard Profesional',
           color: '#C4423D',
           icon: '👩‍💼',
-          level: 12,
-          xp: 1890,
-          streak: 5,
-          courses: [
-            // Cursos rápidos tipo "Crash Course"
-            {
-              id: 'ai-leadership',
-              title: '⚡ Liderazgo con IA - Crash Course',
-              type: 'crash-course',
-              progress: 80,
-              difficulty: 'Intensivo',
-              lessons: 6,
-              completedLessons: 5,
-              color: '#C4423D',
-              isUnlocked: true,
-              description: 'Domina la IA para liderar equipos en 2 horas',
-              estimatedTime: '2 horas'
-            },
-            {
-              id: 'audio-detection',
-              title: '🎵 Detección de Audio con IA',
-              type: 'crash-course',
-              progress: 35,
-              difficulty: 'Técnico',
-              lessons: 4,
-              completedLessons: 1,
-              color: '#4285F4',
-              isUnlocked: true,
-              description: 'Implementa un modelo de detección de audio en 2 horas',
-              estimatedTime: '2 horas'
-            },
-            {
-              id: 'business-automation',
-              title: '🚀 Automatización Empresarial',
-              type: 'crash-course',
-              progress: 0,
-              difficulty: 'Estratégico',
-              lessons: 5,
-              completedLessons: 0,
-              color: '#10B981',
-              isUnlocked: true,
-              description: 'Transforma tu negocio con IA en tiempo récord',
-              estimatedTime: '1.5 horas'
-            },
-            {
-              id: 'ai-investments',
-              title: '💰 IA para Inversiones',
-              type: 'crash-course',
-              progress: 0,
-              difficulty: 'Avanzado',
-              lessons: 7,
-              completedLessons: 0,
-              color: '#F59E0B',
-              isUnlocked: false,
-              description: 'Algoritmos de trading y análisis financiero',
-              estimatedTime: '3 horas'
-            }
-          ],
+          level: realLevel,
+          xp: realXP,
+          streak: realStreak,
           sidebarItems: [
             { icon: Home, label: 'Dashboard', active: true },
+            { icon: BookOpen, label: 'Mis Cursos', action: 'my-courses' },
             { icon: Zap, label: 'Crash Courses' },
             { icon: Briefcase, label: 'Business Cases' },
             { icon: TrendingUp, label: 'ROI Tracker' },
-            { icon: Users, label: 'Network' },
-            { icon: Settings, label: 'Configuración' }
+            { icon: Users, label: 'Comunidad', action: 'community' },
+            { icon: User, label: 'Perfil', action: 'profile' },
+            { icon: Settings, label: 'Configuración', action: 'settings' }
           ]
         };
       default:
-        return { title: '', color: '', icon: '', level: 0, xp: 0, streak: 0, courses: [], sidebarItems: [] };
+        return { title: '', color: '', icon: '', level: 0, xp: 0, streak: 0, sidebarItems: [] };
     }
   };
 
@@ -267,6 +224,21 @@ export function DashboardPage({ role, aiLevel, onLogout, onCourseSelect, onTeach
         break;
       case 'ai-assistant':
         onAIAssistant();
+        break;
+      case 'my-courses':
+        onMyCourses?.();
+        break;
+      case 'achievements':
+        onAchievements?.();
+        break;
+      case 'community':
+        onCommunity?.();
+        break;
+      case 'profile':
+        onProfile?.();
+        break;
+      case 'settings':
+        onSettings?.();
         break;
       default:
         break;
@@ -288,6 +260,36 @@ export function DashboardPage({ role, aiLevel, onLogout, onCourseSelect, onTeach
       </Badge>
     );
   };
+
+  // Calculate actual daily goals based on real user activity
+  const getDailyGoals = () => {
+    const today = new Date().toDateString();
+    const enrollmentsToday = userCourses?.enrollments?.filter(enrollment => {
+      const enrollmentDate = new Date(enrollment.enrolledAt || enrollment.createdAt || '').toDateString();
+      return enrollmentDate === today;
+    }) || [];
+
+    const lessonsCompletedToday = userCourses?.enrollments?.reduce((total, enrollment) => {
+      const completedToday = enrollment.completedLessons?.filter(lesson => {
+        const completionDate = new Date(lesson.completedAt || '').toDateString();
+        return completionDate === today;
+      }) || [];
+      return total + completedToday.length;
+    }, 0) || 0;
+
+    const xpGainedToday = userProfile?.dailyXP || 0;
+    const streakActive = config.streak > 0;
+
+    return {
+      enrollmentsToday: enrollmentsToday.length,
+      lessonsCompletedToday,
+      xpGainedToday,
+      streakActive,
+      hasActivity: enrollmentsToday.length > 0 || lessonsCompletedToday > 0 || xpGainedToday > 0
+    };
+  };
+
+  const dailyGoals = getDailyGoals();
 
   return (
     <div className="min-h-screen relative flex">
@@ -451,107 +453,159 @@ export function DashboardPage({ role, aiLevel, onLogout, onCourseSelect, onTeach
             <div className="lg:col-span-2">
               <div className="flex items-center justify-between mb-6">
                 <h3 className="text-xl font-semibold">
-                  {role === 'student' && 'Mis Cursos Progresivos'}
+                  {role === 'student' && 'Cursos Disponibles'}
                   {role === 'teacher' && 'Desarrollo Profesional'}
                   {role === 'professional' && 'Crash Courses'}
                 </h3>
-                <Button variant="outline" size="sm">Ver Todos</Button>
+                <Button variant="outline" size="sm" onClick={() => onMyCourses?.()}>
+                  Ver Mis Cursos
+                </Button>
               </div>
               
-              <div className="space-y-4">
-                {config.courses.map((course, index) => (
-                  <motion.div
-                    key={course.id}
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: index * 0.1 }}
-                    whileHover={{ scale: 1.02 }}
-                    className="cursor-pointer"
-                    onClick={() => course.isUnlocked && onCourseSelect(course)}
-                  >
-                    <Card className={`transition-all duration-300 ${
-                      course.isUnlocked 
-                        ? 'hover:shadow-lg bg-white/90' 
-                        : 'opacity-60 bg-gray-100/90'
-                    }`}>
-                      <CardContent className="p-6">
-                        <div className="flex items-start space-x-4">
-                          {/* Course Icon */}
-                          <div 
-                            className="w-16 h-16 rounded-xl flex items-center justify-center text-2xl"
-                            style={{ backgroundColor: `${course.color}15` }}
-                          >
-                            {course.isUnlocked ? (
-                              course.progress > 0 ? (
-                                <Play className="w-8 h-8" style={{ color: course.color }} />
-                              ) : (
-                                <BookOpen className="w-8 h-8" style={{ color: course.color }} />
-                              )
-                            ) : (
-                              <Lock className="w-8 h-8 text-gray-400" />
-                            )}
-                          </div>
-
-                          {/* Course Info */}
-                          <div className="flex-1">
-                            <div className="flex items-center space-x-2 mb-2">
-                              <h4 className="text-lg font-semibold text-gray-900">
-                                {course.title}
-                              </h4>
-                              <Badge variant="secondary" className="text-xs">
-                                {course.difficulty}
-                              </Badge>
-                              {role === 'professional' && course.type === 'crash-course' && (
-                                <Badge className="bg-red-100 text-red-800 text-xs">
-                                  <Clock className="w-3 h-3 mr-1" />
-                                  {course.estimatedTime}
-                                </Badge>
-                              )}
+              {isLoading ? (
+                <div className="space-y-4">
+                  {[1, 2, 3].map(i => (
+                    <div key={i} className="animate-pulse">
+                      <Card className="bg-white/90">
+                        <CardContent className="p-6">
+                          <div className="flex items-start space-x-4">
+                            <div className="w-16 h-16 bg-gray-200 rounded-xl"></div>
+                            <div className="flex-1 space-y-2">
+                              <div className="h-5 bg-gray-200 rounded w-3/4"></div>
+                              <div className="h-4 bg-gray-200 rounded w-full"></div>
+                              <div className="h-2 bg-gray-200 rounded w-1/2"></div>
                             </div>
-                            
-                            <p className="text-sm text-gray-600 mb-3">
-                              {course.description}
-                            </p>
-
-                            {course.isUnlocked && (
-                              <div className="space-y-2">
-                                <div className="flex justify-between text-sm text-gray-600">
-                                  <span>{course.completedLessons}/{course.lessons} lecciones</span>
-                                  <span>{course.progress}%</span>
-                                </div>
-                                <Progress value={course.progress} className="h-2" />
-                              </div>
-                            )}
                           </div>
+                        </CardContent>
+                      </Card>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {availableCourses.length > 0 ? availableCourses.slice(0, 3).map((course, index) => {
+                    const isEnrolled = userCourses?.enrolledCourses?.includes(course.id);
+                    const enrollment = userCourses?.enrollments?.find(e => e.courseId === course.id);
+                    const progress = enrollment?.progress || 0;
+                    // Fix: Correctly handle course unlocking logic
+                    const isUnlocked = aiLevel === 'advanced' || 
+                                     course.difficulty === 'beginner' || 
+                                     (course.difficulty === 'intermediate' && aiLevel !== 'beginner') ||
+                                     isEnrolled; // If already enrolled, should always be unlocked
 
-                          {/* Action Button */}
-                          <div className="flex flex-col items-center space-y-2">
-                            {course.isUnlocked ? (
-                              <>
-                                <Button
-                                  size="sm"
-                                  className="text-white"
-                                  style={{ backgroundColor: course.color }}
-                                >
-                                  {course.progress > 0 ? 'Continuar' : 'Comenzar'}
-                                </Button>
-                                {course.progress === 100 && (
-                                  <CheckCircle className="w-5 h-5 text-green-500" />
+                    return (
+                      <motion.div
+                        key={course.id}
+                        initial={{ opacity: 0, y: 20 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ delay: index * 0.1 }}
+                        whileHover={{ scale: 1.02 }}
+                        className="cursor-pointer"
+                        onClick={() => isUnlocked && onCourseSelect(course)}
+                      >
+                        <Card className={`transition-all duration-300 ${
+                          isUnlocked 
+                            ? 'hover:shadow-lg bg-white/90' 
+                            : 'opacity-60 bg-gray-100/90'
+                        }`}>
+                          <CardContent className="p-6">
+                            <div className="flex items-start space-x-4">
+                              {/* Course Icon */}
+                              <div 
+                                className="w-16 h-16 rounded-xl flex items-center justify-center text-2xl"
+                                style={{ backgroundColor: '#4285F415' }}
+                              >
+                                {isUnlocked ? (
+                                  isEnrolled && progress > 0 ? (
+                                    <Play className="w-8 h-8 text-[#4285F4]" />
+                                  ) : (
+                                    <BookOpen className="w-8 h-8 text-[#4285F4]" />
+                                  )
+                                ) : (
+                                  <Lock className="w-8 h-8 text-gray-400" />
                                 )}
-                              </>
-                            ) : (
-                              <div className="text-center">
-                                <Lock className="w-5 h-5 text-gray-400 mx-auto mb-1" />
-                                <span className="text-xs text-gray-500">Bloqueado</span>
                               </div>
-                            )}
-                          </div>
-                        </div>
+
+                              {/* Course Info */}
+                              <div className="flex-1">
+                                <div className="flex items-center space-x-2 mb-2">
+                                  <h4 className="text-lg font-semibold text-gray-900">
+                                    {course.title}
+                                  </h4>
+                                  <Badge variant="secondary" className="text-xs">
+                                    {course.difficulty}
+                                  </Badge>
+                                  <Badge className="bg-blue-100 text-blue-800 text-xs">
+                                    <Clock className="w-3 h-3 mr-1" />
+                                    {course.duration}
+                                  </Badge>
+                                </div>
+                                
+                                <p className="text-sm text-gray-600 mb-3">
+                                  {course.description}
+                                </p>
+
+                                {isEnrolled && (
+                                  <div className="space-y-2">
+                                    <div className="flex justify-between text-sm text-gray-600">
+                                      <span>{enrollment?.completedLessons?.length || 0}/{course.lessons?.length || 0} lecciones</span>
+                                      <span>{progress}%</span>
+                                    </div>
+                                    <Progress value={progress} className="h-2" />
+                                  </div>
+                                )}
+                              </div>
+
+                              {/* Action Button */}
+                              <div className="flex flex-col items-center space-y-2">
+                                {isUnlocked ? (
+                                  <>
+                                    {isEnrolled ? (
+                                      <Button
+                                        size="sm"
+                                        className="text-white bg-[#4285F4] hover:bg-[#3367d6]"
+                                      >
+                                        {progress > 0 ? 'Continuar' : 'Comenzar'}
+                                      </Button>
+                                    ) : (
+                                      <Button
+                                        size="sm"
+                                        variant="outline"
+                                        disabled={enrollmentLoading}
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          handleCourseEnroll(course.id);
+                                        }}
+                                      >
+                                        {enrollmentLoading ? 'Inscribiendo...' : 'Inscribirse'}
+                                      </Button>
+                                    )}
+                                    {progress === 100 && (
+                                      <CheckCircle className="w-5 h-5 text-green-500" />
+                                    )}
+                                  </>
+                                ) : (
+                                  <div className="text-center">
+                                    <Lock className="w-5 h-5 text-gray-400 mx-auto mb-1" />
+                                    <span className="text-xs text-gray-500">Bloqueado</span>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          </CardContent>
+                        </Card>
+                      </motion.div>
+                    );
+                  }) : (
+                    <Card className="bg-white/90">
+                      <CardContent className="p-6 text-center">
+                        <BookOpen className="w-12 h-12 text-gray-400 mx-auto mb-4" />
+                        <p className="text-gray-600">No hay cursos disponibles en este momento.</p>
                       </CardContent>
                     </Card>
-                  </motion.div>
-                ))}
-              </div>
+                  )}
+                </div>
+              )}
             </div>
 
             {/* Right Sidebar */}
@@ -565,27 +619,25 @@ export function DashboardPage({ role, aiLevel, onLogout, onCourseSelect, onTeach
                       <span>Herramientas del Maestro</span>
                     </CardTitle>
                   </CardHeader>
-                  <CardContent className="space-y-3">
-                    <Button 
-                      onClick={onTeacherManagement}
-                      className="w-full justify-start" 
-                      variant="outline"
-                    >
-                      <PlusCircle className="w-4 h-4 mr-2" />
-                      Gestión de Cursos
-                    </Button>
-                    <Button 
-                      onClick={onAIAssistant}
-                      className="w-full justify-start" 
-                      variant="outline"
-                    >
-                      <Bot className="w-4 h-4 mr-2" />
-                      Asistente IA
-                    </Button>
-                    <Button className="w-full justify-start" variant="outline">
-                      <BarChart className="w-4 h-4 mr-2" />
-                      Reportes
-                    </Button>
+                  <CardContent>
+                    <div className="space-y-3">
+                      <Button 
+                        variant="outline" 
+                        className="w-full justify-start"
+                        onClick={onAIAssistant}
+                      >
+                        <Bot className="w-4 h-4 mr-2" />
+                        Asistente IA
+                      </Button>
+                      <Button 
+                        variant="outline" 
+                        className="w-full justify-start"
+                        onClick={onTeacherManagement}
+                      >
+                        <PlusCircle className="w-4 h-4 mr-2" />
+                        Gestión de Cursos
+                      </Button>
+                    </div>
                   </CardContent>
                 </Card>
               )}
@@ -598,66 +650,66 @@ export function DashboardPage({ role, aiLevel, onLogout, onCourseSelect, onTeach
                     <span>Objetivos Diarios</span>
                   </CardTitle>
                 </CardHeader>
-                <CardContent className="space-y-4">
-                  <div>
-                    <div className="flex justify-between text-sm mb-2">
-                      <span>XP Diaria</span>
-                      <span>150/200</span>
+                <CardContent>
+                  {dailyGoals.hasActivity ? (
+                    <div className="space-y-4">
+                      {dailyGoals.enrollmentsToday > 0 && (
+                        <div className="flex items-center justify-between">
+                          <span className="text-sm">Cursos inscritos</span>
+                          <Badge variant="secondary">{dailyGoals.enrollmentsToday}</Badge>
+                        </div>
+                      )}
+                      {dailyGoals.lessonsCompletedToday > 0 && (
+                        <div className="flex items-center justify-between">
+                          <span className="text-sm">Lecciones completadas</span>
+                          <Badge variant="secondary">{dailyGoals.lessonsCompletedToday}</Badge>
+                        </div>
+                      )}
+                      {dailyGoals.xpGainedToday > 0 && (
+                        <div className="flex items-center justify-between">
+                          <span className="text-sm">XP ganado</span>
+                          <Badge variant="secondary">{dailyGoals.xpGainedToday}</Badge>
+                        </div>
+                      )}
+                      {dailyGoals.streakActive && (
+                        <div className="flex items-center justify-between">
+                          <span className="text-sm">Racha activa</span>
+                          <Badge className="bg-orange-100 text-orange-800">{config.streak} días</Badge>
+                        </div>
+                      )}
                     </div>
-                    <Progress value={75} className="h-2" />
-                  </div>
-                  
-                  <div>
-                    <div className="flex justify-between text-sm mb-2">
-                      <span>{role === 'professional' ? 'Crash Courses' : 'Lecciones'}</span>
-                      <span>2/3</span>
+                  ) : (
+                    <div className="text-center text-gray-500 py-4">
+                      <Target className="w-12 h-12 text-gray-300 mx-auto mb-2" />
+                      <p className="text-sm">No hay actividad hoy</p>
+                      <p className="text-xs">¡Comienza inscribiéndote a un curso!</p>
                     </div>
-                    <Progress value={66} className="h-2" />
-                  </div>
-                  
-                  <div>
-                    <div className="flex justify-between text-sm mb-2">
-                      <span>Tiempo de Estudio</span>
-                      <span>25/30 min</span>
-                    </div>
-                    <Progress value={83} className="h-2" />
-                  </div>
+                  )}
                 </CardContent>
               </Card>
 
-              {/* Achievements */}
+              {/* Quick Stats */}
               <Card className="bg-white/90">
                 <CardHeader>
                   <CardTitle className="flex items-center space-x-2">
-                    <Trophy className="w-5 h-5" style={{ color: config.color }} />
-                    <span>Logros Recientes</span>
+                    <TrendingUp className="w-5 h-5" style={{ color: config.color }} />
+                    <span>Progreso</span>
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <div className="space-y-3">
-                    <motion.div className="flex items-center space-x-3 p-3 rounded-lg bg-green-50 border border-green-200">
-                      <div className="text-2xl">🎯</div>
-                      <div className="flex-1">
-                        <div className="font-medium text-sm">Primera Lección</div>
-                        <div className="text-xs text-green-600">Desbloqueado</div>
-                      </div>
-                    </motion.div>
-                    
-                    <motion.div className="flex items-center space-x-3 p-3 rounded-lg bg-orange-50 border border-orange-200">
-                      <div className="text-2xl">🔥</div>
-                      <div className="flex-1">
-                        <div className="font-medium text-sm">Racha de {config.streak} días</div>
-                        <div className="text-xs text-orange-600">Desbloqueado</div>
-                      </div>
-                    </motion.div>
-
-                    <motion.div className="flex items-center space-x-3 p-3 rounded-lg bg-gray-50 border border-gray-200 opacity-60">
-                      <div className="text-2xl">🧠</div>
-                      <div className="flex-1">
-                        <div className="font-medium text-sm">Experto en IA</div>
-                        <div className="text-xs text-gray-500">Bloqueado</div>
-                      </div>
-                    </motion.div>
+                  <div className="space-y-4">
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm">Cursos inscritos</span>
+                      <Badge variant="secondary">{userCourses?.enrolledCourses?.length || 0}</Badge>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm">Cursos completados</span>
+                      <Badge variant="secondary">{userCourses?.completedCourses?.length || 0}</Badge>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm">XP total</span>
+                      <Badge variant="secondary">{config.xp}</Badge>
+                    </div>
                   </div>
                 </CardContent>
               </Card>
@@ -665,6 +717,15 @@ export function DashboardPage({ role, aiLevel, onLogout, onCourseSelect, onTeach
           </div>
         </main>
       </div>
+
+      {/* Debug Panel - Remove in production */}
+      <DebugPanel
+        userProfile={userProfile}
+        session={session}
+        userCourses={userCourses}
+        availableCourses={availableCourses}
+        aiLevel={aiLevel}
+      />
     </div>
   );
 }
