@@ -255,14 +255,12 @@ export function ProfilePage({ onBack, session, userProfile, role }: ProfilePageP
 
                     {/* Name and Role */}
                     <div className="mb-4">
-                      {isEditing ? (
-                        <Input
-                          value={editedProfile.name}
-                          onChange={(e) => setEditedProfile({ ...editedProfile, name: e.target.value })}
-                          className="text-center text-xl font-bold mb-2"
-                        />
-                      ) : (
-                        <h2 className="text-xl font-bold mb-2">{userProfile?.name || 'Usuario'}</h2>
+                      {/* El nombre no es editable por seriedad educativa - representa nombre real */}
+                      <h2 className="text-xl font-bold mb-2">{userProfile?.name || 'Usuario'}</h2>
+                      {isEditing && (
+                        <p className="text-xs text-gray-500 mb-2">
+                          El nombre no puede modificarse
+                        </p>
                       )}
                       
                       <Badge 

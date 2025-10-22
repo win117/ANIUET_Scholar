@@ -24,7 +24,8 @@ import {
   Users,
   FileText,
   Video,
-  Download
+  Download,
+  Crown
 } from "lucide-react";
 import logo from 'figma:asset/2b2a7f5a35cc2954a161c6344ab960a250a1a60d.png';
 
@@ -32,6 +33,7 @@ interface CourseMapPageProps {
   course: any;
   userRole: 'student' | 'teacher' | 'professional' | null;
   onBack: () => void;
+  onLessonSelect?: (courseId: string, lessonId: string) => void;
   session?: any;
 }
 
@@ -65,7 +67,7 @@ const courseNodes: Record<string, Node[]> = {
       id: 'basics',
       title: 'Conceptos Básicos',
       type: 'reading',
-      status: 'completed',
+      status: 'current',
       position: { x: 20, y: 70 },
       connections: ['history', 'types'],
       xpReward: 100,
@@ -76,12 +78,13 @@ const courseNodes: Record<string, Node[]> = {
       id: 'history',
       title: 'Historia de la IA',
       type: 'reading',
-      status: 'completed',
+      status: 'locked',
       position: { x: 10, y: 50 },
       connections: ['quiz1'],
       xpReward: 75,
       estimatedTime: '15 min',
-      description: 'Desde Turing hasta las redes neuronales modernas'
+      description: 'Desde Turing hasta las redes neuronales modernas',
+      prerequisites: ['basics']
     },
     {
       id: 'types',
@@ -199,18 +202,74 @@ const courseNodes: Record<string, Node[]> = {
   ]
 };
 
-export function CourseMapPage({ course, userRole, onBack, session }: CourseMapPageProps) {
+export function CourseMapPage({ course, userRole, onBack, onLessonSelect, session }: CourseMapPageProps) {
   const [selectedNode, setSelectedNode] = useState<Node | null>(null);
   const [completedNodes, setCompletedNodes] = useState<Set<string>>(new Set());
   const [userProgress, setUserProgress] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [userProfile, setUserProfile] = useState<any>(null);
+  const [hasAccess, setHasAccess] = useState(true);
+
+  // Calculate node statuses dynamically based on user progress
+  const calculateNodeStatus = (node: any, index: number, completedLessons: string[]) => {
+    // Check if lesson is completed (handle both node.id and mapped lesson IDs)
+    const lessonMappings: { [key: string]: string } = {
+      'basics': 'intro-1',
+      'history': 'history-1'
+    };
+    
+    const actualLessonId = lessonMappings[node.id] || node.id;
+    const isCompleted = completedLessons.includes(actualLessonId) || 
+                       completedLessons.some((l: any) => 
+                         typeof l === 'object' ? l.lessonId === actualLessonId : l === actualLessonId
+                       );
+    
+    if (isCompleted) {
+      return 'completed';
+    }
+    
+    // First node is always available for enrolled users
+    if (index === 0) {
+      return 'current';
+    }
+    
+    // Check if prerequisites are met
+    if (node.prerequisites) {
+      const prereqsMet = node.prerequisites.every((prereq: string) => {
+        const prereqLessonId = lessonMappings[prereq] || prereq;
+        return completedLessons.includes(prereqLessonId) ||
+               completedLessons.some((l: any) => 
+                 typeof l === 'object' ? l.lessonId === prereqLessonId : l === prereqLessonId
+               );
+      });
+      return prereqsMet ? 'current' : 'locked';
+    }
+    
+    // For sequential courses, unlock next node if previous is completed
+    if (index > 0) {
+      const prevNode = courseNodes[course.id]?.[index - 1] || 
+                      (course.lessons && course.lessons[index - 1]);
+      if (prevNode) {
+        const prevLessonId = lessonMappings[prevNode.id] || prevNode.id;
+        const isPrevCompleted = completedLessons.includes(prevLessonId) ||
+                               completedLessons.some((l: any) => 
+                                 typeof l === 'object' ? l.lessonId === prevLessonId : l === prevLessonId
+                               );
+        if (isPrevCompleted) {
+          return 'current';
+        }
+      }
+    }
+    
+    return 'locked';
+  };
 
   // Use course lessons if available, otherwise fall back to predefined nodes
-  const nodes = course.lessons ? course.lessons.map((lesson: any, index: number) => ({
+  const baseNodes = course.lessons ? course.lessons.map((lesson: any, index: number) => ({
     id: lesson.id,
     title: lesson.title,
     type: lesson.type || 'reading',
-    status: 'locked',
+    status: 'locked', // Will be calculated below
     position: { 
       x: 20 + (index % 3) * 30, 
       y: 80 - Math.floor(index / 3) * 20 
@@ -222,9 +281,67 @@ export function CourseMapPage({ course, userRole, onBack, session }: CourseMapPa
     prerequisites: index > 0 ? [course.lessons[index - 1].id] : undefined
   })) : courseNodes[course.id] || courseNodes['intro-ai'];
 
+  // Apply dynamic status calculation
+  const nodes = baseNodes.map((node, index) => {
+    const status = calculateNodeStatus(node, index, Array.from(completedNodes));
+    return {
+      ...node,
+      status
+    };
+  });
+
+  // Debug logging
   useEffect(() => {
+    console.log('=== COURSE MAP DEBUG ===');
+    console.log('Course ID:', course.id);
+    console.log('Completed Nodes:', Array.from(completedNodes));
+    console.log('Node States:', nodes.map(n => ({ id: n.id, title: n.title, status: n.status })));
+    console.log('User Progress:', userProgress);
+  }, [nodes, completedNodes, userProgress]);
+
+  useEffect(() => {
+    loadUserProfile();
     loadCourseProgress();
   }, [course.id, session]);
+
+  const loadUserProfile = async () => {
+    if (!session?.access_token) return;
+
+    try {
+      const result = await apiHelpers.getUserProfile(session.access_token);
+      if (result.success && result.data) {
+        setUserProfile(result.data);
+        
+        // Check tier access
+        const requiredTier = course.requiredTier || 'free';
+        const currentTier = result.data.subscription_tier || 'free';
+        const tierHierarchy = { free: 0, pro: 1, enterprise: 2 };
+        const access = tierHierarchy[currentTier] >= tierHierarchy[requiredTier];
+        setHasAccess(access);
+        
+        if (!access) {
+          toast.error(`Este curso requiere suscripción ${requiredTier.toUpperCase()}`, {
+            description: 'Actualiza tu plan para acceder a este contenido'
+          });
+        }
+      }
+    } catch (error) {
+      console.error('Error loading user profile:', error);
+    }
+  };
+
+  // Reload progress when component becomes visible again (user returns from lesson)
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (!document.hidden) {
+        console.log('📍 Página visible nuevamente, recargando progreso...');
+        loadCourseProgress();
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
+  }, []);
 
   const loadCourseProgress = async () => {
     if (!session?.access_token) {
@@ -238,7 +355,14 @@ export function CourseMapPage({ course, userRole, onBack, session }: CourseMapPa
       
       if (enrollment) {
         setUserProgress(enrollment);
-        setCompletedNodes(new Set(enrollment.completedLessons || []));
+        
+        // Extract lesson IDs from completedLessons (handle both string and object formats)
+        const completedLessonIds = (enrollment.completedLessons || []).map((lesson: any) => 
+          typeof lesson === 'string' ? lesson : lesson.lessonId
+        );
+        
+        console.log('📊 Lecciones completadas cargadas:', completedLessonIds);
+        setCompletedNodes(new Set(completedLessonIds));
       }
     } catch (error) {
       console.error('Error loading course progress:', error);
@@ -293,8 +417,10 @@ export function CourseMapPage({ course, userRole, onBack, session }: CourseMapPa
   }, 0);
 
   const handleNodeClick = (node: Node) => {
-    if (node.status !== 'locked') {
+    if (node.status === 'current' || node.status === 'completed') {
       setSelectedNode(node);
+    } else if (node.status === 'locked') {
+      toast.info(`${node.title} estará disponible cuando completes los prerequisitos`);
     }
   };
 
@@ -304,6 +430,25 @@ export function CourseMapPage({ course, userRole, onBack, session }: CourseMapPa
       return;
     }
 
+    // For reading lessons, navigate to lesson reader
+    if (node.type === 'reading' && onLessonSelect) {
+      // Map internal node IDs to actual lesson IDs
+      let lessonId = node.id;
+      if (course.id === 'intro-ai') {
+        // Map the node IDs to the actual lesson IDs
+        if (node.id === 'basics') {
+          lessonId = 'intro-1';
+        } else if (node.id === 'history') {
+          lessonId = 'history-1';
+        }
+      }
+      
+      setSelectedNode(null);
+      onLessonSelect(course.id, lessonId);
+      return;
+    }
+
+    // For other types, simulate completion for now
     try {
       // Update progress in backend
       await apiHelpers.updateCourseProgress(
@@ -330,6 +475,22 @@ export function CourseMapPage({ course, userRole, onBack, session }: CourseMapPa
 
   const isImpressiveTitle = course.id === 'audio-detection' || course.type === 'crash-course';
 
+  const getTierBadge = () => {
+    const requiredTier = course.requiredTier || 'free';
+    switch (requiredTier) {
+      case 'free':
+        return <Badge className="bg-gray-500">GRATIS</Badge>;
+      case 'pro':
+        return <Badge className="bg-[#E3701B]">PRO</Badge>;
+      case 'enterprise':
+        return <Badge className="bg-[#4285F4]">ENTERPRISE</Badge>;
+      case 'enterprise':
+        return <Badge className="bg-purple-600">ENTERPRISE</Badge>;
+      default:
+        return null;
+    }
+  };
+
   return (
     <div className="min-h-screen relative">
       <DynamicBackground variant="course-map" />
@@ -343,9 +504,12 @@ export function CourseMapPage({ course, userRole, onBack, session }: CourseMapPa
             </Button>
             <img src={logo} alt="ANIUET Scholar" className="w-8 h-8" />
             <div>
-              <h1 className="text-2xl font-bold" style={{ color: course.color }}>
-                {course.title}
-              </h1>
+              <div className="flex items-center gap-3">
+                <h1 className="text-2xl font-bold" style={{ color: course.color }}>
+                  {course.title}
+                </h1>
+                {getTierBadge()}
+              </div>
               <p className="text-gray-600">{course.description}</p>
             </div>
           </div>
@@ -390,6 +554,69 @@ export function CourseMapPage({ course, userRole, onBack, session }: CourseMapPa
       {/* Course Map */}
       <main className="relative p-6">
         <div className="max-w-7xl mx-auto">
+          {!hasAccess ? (
+            <Card className="bg-white/90">
+              <CardContent className="p-12 text-center">
+                <div className="flex flex-col items-center space-y-6">
+                  <div className="w-24 h-24 bg-gradient-to-br from-[#E3701B] to-[#4285F4] rounded-full flex items-center justify-center">
+                    <Lock className="w-12 h-12 text-white" />
+                  </div>
+                  <div>
+                    <h2 className="text-3xl font-bold mb-2">Contenido Pro</h2>
+                    <p className="text-gray-600 text-lg mb-1">
+                      Este curso requiere una suscripción {(course.requiredTier || 'pro').toUpperCase()}
+                    </p>
+                    <p className="text-gray-500">
+                      Tu plan actual: {(userProfile?.subscription_tier || 'free').toUpperCase()}
+                    </p>
+                  </div>
+                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-6 max-w-md">
+                    <h3 className="font-semibold mb-3 flex items-center gap-2">
+                      <Crown className="w-5 h-5 text-[#E3701B]" />
+                      Beneficios de actualizar:
+                    </h3>
+                    <ul className="text-left space-y-2 text-sm text-gray-700">
+                      <li className="flex items-start gap-2">
+                        <CheckCircle className="w-4 h-4 text-green-500 mt-0.5" />
+                        <span>Acceso a todos los cursos Pro</span>
+                      </li>
+                      <li className="flex items-start gap-2">
+                        <CheckCircle className="w-4 h-4 text-green-500 mt-0.5" />
+                        <span>Certificados verificados</span>
+                      </li>
+                      <li className="flex items-start gap-2">
+                        <CheckCircle className="w-4 h-4 text-green-500 mt-0.5" />
+                        <span>Asistente IA ilimitado</span>
+                      </li>
+                      <li className="flex items-start gap-2">
+                        <CheckCircle className="w-4 h-4 text-green-500 mt-0.5" />
+                        <span>Soporte prioritario</span>
+                      </li>
+                    </ul>
+                  </div>
+                  <div className="flex gap-4">
+                    <Button
+                      onClick={onBack}
+                      variant="outline"
+                      size="lg"
+                    >
+                      Volver a Cursos
+                    </Button>
+                    <Button
+                      onClick={() => {
+                        window.dispatchEvent(new CustomEvent('navigate-to-subscription'));
+                      }}
+                      className="bg-gradient-to-r from-[#E3701B] to-[#4285F4] text-white"
+                      size="lg"
+                    >
+                      <Crown className="w-5 h-5 mr-2" />
+                      Ver Planes de Suscripción
+                    </Button>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          ) : (
           <div className="relative h-[600px] bg-gradient-to-br from-blue-50/50 via-purple-50/50 to-indigo-50/50 rounded-2xl border-2 border-gray-200/50 overflow-hidden">
             {/* Background pattern */}
             <div 
@@ -509,6 +736,7 @@ export function CourseMapPage({ course, userRole, onBack, session }: CourseMapPa
               );
             })}
           </div>
+          )}
         </div>
       </main>
 

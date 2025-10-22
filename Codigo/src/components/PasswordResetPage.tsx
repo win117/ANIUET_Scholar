@@ -1,3 +1,22 @@
+/**
+ * PasswordResetPage Component - Página de recuperación de contraseña
+ * 
+ * Este componente maneja el flujo completo de recuperación de contraseña en 4 pasos:
+ * 1. 'request' - El usuario solicita un enlace de recuperación ingresando su email
+ * 2. 'success' - Se muestra confirmación de envío del enlace (y token en desarrollo)
+ * 3. 'reset' - El usuario ingresa nueva contraseña junto con el token recibido
+ * 4. 'final' - Confirmación de que la contraseña fue actualizada exitosamente
+ * 
+ * Características principales:
+ * - Validación de email con formato válido
+ * - Validación de contraseña (mínimo 6 caracteres, recomendación de seguridad)
+ * - Manejo robusto de errores con mensajes contextuales en español
+ * - Soporte para tokens desde URL (query params o hash fragments)
+ * - Modo desarrollo: muestra el token generado para facilitar testing
+ * - Animaciones suaves usando Motion para mejor UX
+ * 
+ * @component
+ */
 import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
 import { Button } from "./ui/button";
@@ -10,6 +29,14 @@ import { authHelpers, apiHelpers } from "../utils/supabase/client";
 import { toast } from "sonner@2.0.3";
 import logo from 'figma:asset/2b2a7f5a35cc2954a161c6344ab960a250a1a60d.png';
 
+/**
+ * Props para PasswordResetPage
+ * @interface PasswordResetPageProps
+ * @property {Function} onBack - Callback para volver a la pantalla anterior
+ * @property {Function} onSuccess - Callback cuando se completa exitosamente el reset
+ * @property {string} [email] - Email opcional para pre-rellenar el formulario
+ * @property {string} [resetToken] - Token de recuperación opcional desde props
+ */
 interface PasswordResetPageProps {
   onBack: () => void;
   onSuccess: () => void;
@@ -18,70 +45,117 @@ interface PasswordResetPageProps {
 }
 
 export function PasswordResetPage({ onBack, onSuccess, email: initialEmail, resetToken }: PasswordResetPageProps) {
+  // Estados del componente
+  
+  /** Estado del flujo de recuperación (request -> success -> reset -> final) */
   const [step, setStep] = useState<'request' | 'reset' | 'success' | 'final'>('request');
+  
+  /** Email del usuario que solicita recuperación */
   const [email, setEmail] = useState(initialEmail || '');
+  
+  /** Nueva contraseña ingresada por el usuario */
   const [newPassword, setNewPassword] = useState('');
+  
+  /** Confirmación de la nueva contraseña */
   const [confirmPassword, setConfirmPassword] = useState('');
+  
+  /** Token de recuperación ingresado/recibido */
   const [resetTokenInput, setResetTokenInput] = useState('');
+  
+  /** Control de visibilidad de contraseña */
   const [showPassword, setShowPassword] = useState(false);
+  
+  /** Estado de carga durante operaciones asíncronas */
   const [isLoading, setIsLoading] = useState(false);
+  
+  /** Enlace de recuperación (para desarrollo) */
   const [resetLink, setResetLink] = useState('');
+  
+  /** Token generado por el servidor (visible en modo desarrollo) */
   const [generatedToken, setGeneratedToken] = useState('');
 
+  /**
+   * Effect: Detecta parámetros de URL para recuperación automática
+   * 
+   * Busca email y token en:
+   * 1. Hash fragments (#reset-password?email=...&token=...)
+   * 2. Query parameters regulares (?email=...&token=...)
+   * 3. Props del componente
+   * 
+   * Si encuentra email y token, salta automáticamente al paso 'reset'
+   */
   useEffect(() => {
-    // Check for parameters from URL
+    // Obtener parámetros de la URL
     const urlParams = new URLSearchParams(window.location.search);
     const hash = window.location.hash;
     
     let emailFromUrl = '';
     let tokenFromUrl = '';
     
-    // Check hash parameters first (for #reset-password?email=...&token=...)
+    // Primero verificar hash fragments (usado en SPAs)
     if (hash.includes('reset-password')) {
       const hashParams = new URLSearchParams(hash.split('?')[1] || '');
       emailFromUrl = hashParams.get('email') || '';
       tokenFromUrl = hashParams.get('token') || '';
     } else {
-      // Check regular URL parameters
+      // Luego verificar query parameters normales
       emailFromUrl = urlParams.get('email') || '';
       tokenFromUrl = urlParams.get('token') || '';
     }
     
-    // Use URL parameters if available, otherwise use props
+    // Prioridad: URL > props
     const finalEmail = emailFromUrl || initialEmail || '';
     const finalToken = tokenFromUrl || resetToken || '';
     
+    // Pre-rellenar email si está disponible
     if (finalEmail) {
       setEmail(finalEmail);
     }
     
+    // Si tenemos email Y token, ir directamente al paso de reset
     if (finalEmail && finalToken) {
       setResetTokenInput(finalToken);
       setStep('reset');
     }
   }, [initialEmail, resetToken]);
 
+  /**
+   * Maneja la solicitud inicial de recuperación de contraseña
+   * 
+   * Flujo:
+   * 1. Valida el email (presencia y formato)
+   * 2. Llama al backend para generar token de recuperación
+   * 3. En desarrollo: muestra el token generado
+   * 4. Cambia al paso 'success' para mostrar instrucciones
+   * 
+   * @param e - Evento del formulario
+   */
   const handleRequestReset = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
 
     try {
+      // Validación: email requerido
       if (!email) {
         toast.error("Por favor, ingresa tu correo electrónico");
         return;
       }
 
-      // Validate email format
+      // Validación: formato de email
       const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
       if (!emailRegex.test(email)) {
         toast.error("Por favor, ingresa un correo electrónico válido");
         return;
       }
 
+      // Llamada al backend para solicitar recuperación
       const { data, error } = await authHelpers.requestPasswordReset(email);
       
+      // Manejo de errores con mensajes contextuales
       if (error) {
         console.error("Password reset error:", error);
+        
+        // Mensajes de error específicos según el tipo de problema
         if (error.message?.includes('formato') || error.message?.includes('inválido')) {
           toast.error("Formato de correo electrónico inválido");
         } else if (error.message?.includes('network') || error.message?.includes('fetch')) {
@@ -92,19 +166,19 @@ export function PasswordResetPage({ onBack, onSuccess, email: initialEmail, rese
         return;
       }
 
-      // Show success message
+      // Mostrar mensaje de éxito
       if (data.emailSent) {
         toast.success("Se ha enviado un enlace de recuperación a tu correo electrónico");
       } else {
         toast.success("Se ha generado un enlace de recuperación");
       }
       
-      // In development or when email service fails, show the reset token
+      // Modo desarrollo: mostrar el token generado para facilitar testing
       if (data.resetToken) {
         setGeneratedToken(data.resetToken);
         console.log("Reset token (development/fallback):", data.resetToken);
         
-        // Show development helper
+        // Toast interactivo con opción de usar el token directamente
         setTimeout(() => {
           toast.info("Token generado", {
             duration: 15000,
@@ -119,6 +193,7 @@ export function PasswordResetPage({ onBack, onSuccess, email: initialEmail, rese
         }, 1500);
       }
 
+      // Avanzar al paso de éxito
       setStep('success');
 
     } catch (error) {
@@ -133,33 +208,50 @@ export function PasswordResetPage({ onBack, onSuccess, email: initialEmail, rese
     }
   };
 
+  /**
+   * Maneja la actualización de la contraseña con el token de recuperación
+   * 
+   * Flujo:
+   * 1. Valida todos los campos requeridos
+   * 2. Valida longitud mínima de contraseña
+   * 3. Valida que las contraseñas coincidan
+   * 4. Verifica fortaleza de contraseña (recomendación)
+   * 5. Llama al backend para actualizar la contraseña
+   * 6. Limpia datos sensibles
+   * 7. Avanza al paso final de confirmación
+   * 
+   * @param e - Evento del formulario
+   */
   const handlePasswordUpdate = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
 
     try {
-      // Comprehensive validation
+      // Validación 1: Campos requeridos
       if (!newPassword || !confirmPassword) {
         toast.error("Por favor, completa todos los campos");
         return;
       }
 
+      // Validación 2: Token requerido
       if (!resetTokenInput && !resetToken) {
         toast.error("Token de recuperación requerido");
         return;
       }
 
+      // Validación 3: Longitud mínima de contraseña
       if (newPassword.length < 6) {
         toast.error("La nueva contraseña debe tener al menos 6 caracteres");
         return;
       }
 
+      // Validación 4: Contraseñas coinciden
       if (newPassword !== confirmPassword) {
         toast.error("Las contraseñas no coinciden");
         return;
       }
 
-      // Check password strength
+      // Validación de fortaleza (recomendación, no bloquea)
       const hasUpperCase = /[A-Z]/.test(newPassword);
       const hasLowerCase = /[a-z]/.test(newPassword);
       const hasNumbers = /\d/.test(newPassword);
@@ -168,12 +260,17 @@ export function PasswordResetPage({ onBack, onSuccess, email: initialEmail, rese
         toast.warning("Se recomienda que la contraseña contenga mayúsculas, minúsculas y números para mayor seguridad");
       }
 
+      // Determinar qué token usar (input del usuario o prop)
       const tokenToUse = resetTokenInput || resetToken || '';
+      
+      // Llamada al backend para actualizar contraseña
       const { data, error } = await authHelpers.updatePassword(email, newPassword, tokenToUse);
       
+      // Manejo detallado de errores con mensajes contextuales
       if (error) {
         console.error("Password update error:", error);
         
+        // Mensajes de error específicos para cada tipo de problema
         let errorMessage = "Error al actualizar la contraseña";
         if (error.message?.includes('Token') || error.message?.includes('token')) {
           errorMessage = "Token de recuperación inválido o expirado. Solicita un nuevo enlace.";
@@ -191,14 +288,15 @@ export function PasswordResetPage({ onBack, onSuccess, email: initialEmail, rese
         return;
       }
 
+      // Éxito: Mostrar mensaje confirmatorio
       toast.success("¡Contraseña actualizada exitosamente!");
       
-      // Clear sensitive data
+      // Seguridad: Limpiar datos sensibles de la memoria
       setNewPassword('');
       setConfirmPassword('');
       setResetTokenInput('');
       
-      // Go to final success step
+      // Avanzar al paso final después de un breve delay
       setTimeout(() => {
         setStep('final');
       }, 1500);
@@ -215,6 +313,12 @@ export function PasswordResetPage({ onBack, onSuccess, email: initialEmail, rese
     }
   };
 
+  /**
+   * Helper: Obtiene el enlace de recuperación desde el backend
+   * (Función auxiliar para desarrollo/testing)
+   * 
+   * @deprecated Principalmente para debugging
+   */
   const handleGetResetLink = async () => {
     try {
       const { data, error } = await apiHelpers.getPasswordResetLink(email);

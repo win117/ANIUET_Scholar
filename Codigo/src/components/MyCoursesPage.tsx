@@ -16,7 +16,8 @@ import {
   Trophy,
   Users,
   Target,
-  TrendingUp
+  TrendingUp,
+  Crown
 } from "lucide-react";
 import logo from 'figma:asset/2b2a7f5a35cc2954a161c6344ab960a250a1a60d.png';
 
@@ -26,9 +27,10 @@ interface MyCoursesPageProps {
   userProfile: any;
   role: 'student' | 'teacher' | 'professional';
   onCourseSelect: (course: any) => void;
+  onSubscription?: () => void;
 }
 
-export function MyCoursesPage({ onBack, session, userProfile, role, onCourseSelect }: MyCoursesPageProps) {
+export function MyCoursesPage({ onBack, session, userProfile, role, onCourseSelect, onSubscription }: MyCoursesPageProps) {
   const [enrolledCourses, setEnrolledCourses] = useState<any[]>([]);
   const [availableCourses, setAvailableCourses] = useState<any[]>([]);
   const [userCourses, setUserCourses] = useState<any>(null);
@@ -82,9 +84,24 @@ export function MyCoursesPage({ onBack, session, userProfile, role, onCourseSele
       await apiHelpers.enrollInCourse(session.access_token, courseId);
       toast.success('¡Te has inscrito al curso exitosamente!');
       loadCoursesData(); // Reload data
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error enrolling in course:', error);
-      toast.error('Error al inscribirse al curso');
+      
+      // Check if error is due to insufficient subscription tier
+      if (error.response?.requiresUpgrade || error.message?.includes('Suscripción insuficiente')) {
+        const requiredTier = error.response?.requiredTier || 'pro';
+        toast.error(`Este curso requiere suscripción ${requiredTier.toUpperCase()}`, {
+          description: 'Actualiza tu plan para acceder a este contenido'
+        });
+        
+        setTimeout(() => {
+          if (onSubscription) {
+            onSubscription();
+          }
+        }, 2000);
+      } else {
+        toast.error('Error al inscribirse al curso');
+      }
     }
   };
 
@@ -271,6 +288,22 @@ export function MyCoursesPage({ onBack, session, userProfile, role, onCourseSele
                   enrolledCourses.map((course, index) => {
                     const enrollment = getEnrollmentData(course.id);
                     const progress = enrollment?.progress || 0;
+                    const requiredTier = course.requiredTier || 'free';
+                    
+                    const getTierBadgeForEnrolled = () => {
+                      switch (requiredTier) {
+                        case 'free':
+                          return <Badge className="bg-gray-500 text-xs">GRATIS</Badge>;
+                        case 'pro':
+                          return <Badge className="bg-[#E3701B] text-xs">PRO</Badge>;
+                        case 'enterprise':
+                          return <Badge className="bg-[#4285F4] text-xs">ENTERPRISE</Badge>;
+                        case 'enterprise':
+                          return <Badge className="bg-purple-600 text-xs">ENTERPRISE</Badge>;
+                        default:
+                          return null;
+                      }
+                    };
                     
                     return (
                       <motion.div
@@ -285,12 +318,15 @@ export function MyCoursesPage({ onBack, session, userProfile, role, onCourseSele
                         <Card className="bg-white/90 hover:shadow-lg transition-all duration-300">
                           <CardHeader className="pb-3">
                             <div className="flex items-start justify-between">
-                              <div>
-                                <CardTitle className="text-lg mb-2">{course.title}</CardTitle>
+                              <div className="flex-1">
+                                <div className="flex items-center gap-2 mb-2">
+                                  <CardTitle className="text-lg">{course.title}</CardTitle>
+                                  {getTierBadgeForEnrolled()}
+                                </div>
                                 <p className="text-sm text-gray-600">{course.description}</p>
                               </div>
                               {progress === 100 && (
-                                <CheckCircle className="w-6 h-6 text-green-500" />
+                                <CheckCircle className="w-6 h-6 text-green-500 ml-2" />
                               )}
                             </div>
                           </CardHeader>
@@ -361,6 +397,27 @@ export function MyCoursesPage({ onBack, session, userProfile, role, onCourseSele
               ) : (
                 availableCourses.map((course, index) => {
                   const isEnrolled = userCourses?.enrolledCourses?.includes(course.id);
+                  const requiredTier = course.requiredTier || 'free';
+                  const currentTier = userProfile?.subscription_tier || 'free';
+                  
+                  // Tier hierarchy: free < pro < enterprise
+                  const tierHierarchy = { free: 0, pro: 1, enterprise: 2 };
+                  const hasAccess = tierHierarchy[currentTier] >= tierHierarchy[requiredTier];
+                  
+                  const getTierBadge = () => {
+                    switch (requiredTier) {
+                      case 'free':
+                        return <Badge className="bg-gray-500">GRATIS</Badge>;
+                      case 'pro':
+                        return <Badge className="bg-[#E3701B]">PRO</Badge>;
+                      case 'enterprise':
+                        return <Badge className="bg-[#4285F4]">ENTERPRISE</Badge>;
+                      case 'enterprise':
+                        return <Badge className="bg-purple-600">ENTERPRISE</Badge>;
+                      default:
+                        return null;
+                    }
+                  };
                   
                   return (
                     <motion.div
@@ -373,7 +430,10 @@ export function MyCoursesPage({ onBack, session, userProfile, role, onCourseSele
                     >
                       <Card className="bg-white/90 hover:shadow-lg transition-all duration-300">
                         <CardHeader className="pb-3">
-                          <CardTitle className="text-lg mb-2">{course.title}</CardTitle>
+                          <div className="flex items-start justify-between mb-2">
+                            <CardTitle className="text-lg">{course.title}</CardTitle>
+                            {getTierBadge()}
+                          </div>
                           <p className="text-sm text-gray-600">{course.description}</p>
                         </CardHeader>
                         <CardContent>
@@ -391,7 +451,26 @@ export function MyCoursesPage({ onBack, session, userProfile, role, onCourseSele
                               <span>{course.xpReward || 0} XP total</span>
                             </div>
 
-                            {isEnrolled ? (
+                            {!hasAccess ? (
+                              <Button 
+                                className="w-full bg-gradient-to-r from-[#E3701B] to-[#4285F4] text-white"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  toast.info(`Este curso requiere suscripción ${requiredTier.toUpperCase()}`, {
+                                    description: 'Actualiza tu plan para acceder a este contenido'
+                                  });
+                                  setTimeout(() => {
+                                    if (onSubscription) {
+                                      // Trigger subscription page through parent navigation
+                                      window.dispatchEvent(new CustomEvent('navigate-to-subscription'));
+                                    }
+                                  }, 1000);
+                                }}
+                              >
+                                <Crown className="w-4 h-4 mr-2" />
+                                Actualizar a {requiredTier.toUpperCase()}
+                              </Button>
+                            ) : isEnrolled ? (
                               <Button 
                                 className="w-full" 
                                 variant="outline"

@@ -20,102 +20,52 @@ import {
   TrendingUp,
   Star,
   Filter,
-  Send
+  Send,
+  Loader2
 } from "lucide-react";
 import logo from 'figma:asset/2b2a7f5a35cc2954a161c6344ab960a250a1a60d.png';
+import { apiHelpers } from "../utils/supabase/client";
+import { toast } from "sonner@2.0.3";
 
 interface CommunityPageProps {
   onBack: () => void;
   session: any;
   userProfile: any;
   role: 'student' | 'teacher' | 'professional';
+  onMessages?: () => void;
 }
 
-export function CommunityPage({ onBack, session, userProfile, role }: CommunityPageProps) {
+export function CommunityPage({ onBack, session, userProfile, role, onMessages }: CommunityPageProps) {
   const [activeTab, setActiveTab] = useState<'feed' | 'discussions' | 'leaderboard'>('feed');
   const [searchTerm, setSearchTerm] = useState('');
   const [newPostContent, setNewPostContent] = useState('');
   const [showNewPost, setShowNewPost] = useState(false);
+  const [newDiscussionTitle, setNewDiscussionTitle] = useState('');
+  const [newDiscussionContent, setNewDiscussionContent] = useState('');
+  const [newDiscussionCategory, setNewDiscussionCategory] = useState('General');
+  const [showNewDiscussion, setShowNewDiscussion] = useState(false);
+  const [expandedPost, setExpandedPost] = useState<string | null>(null);
+  const [newComment, setNewComment] = useState('');
+  const [commentingOnPost, setCommentingOnPost] = useState<string | null>(null);
+  
+  // Loading states
+  const [isLoading, setIsLoading] = useState(true);
+  const [isSubmittingPost, setIsSubmittingPost] = useState(false);
+  const [isSubmittingDiscussion, setIsSubmittingDiscussion] = useState(false);
+  const [isSubmittingComment, setIsSubmittingComment] = useState(false);
 
-  // Mock data - in a real app this would come from the backend
-  const [posts, setPosts] = useState([
-    {
-      id: '1',
-      author: {
-        name: 'María González',
-        role: 'student',
-        level: 8,
-        avatar: '👩‍🎓'
-      },
-      content: '¡Acabo de completar mi primer proyecto de IA! Fue increíble ver cómo el modelo pudo clasificar imágenes con 94% de precisión. ¿Alguien más ha trabajado con CNN?',
-      timestamp: '2 horas',
-      likes: 15,
-      comments: 4,
-      tags: ['IA', 'CNN', 'Proyecto'],
-      type: 'achievement'
-    },
-    {
-      id: '2',
-      author: {
-        name: 'Dr. Carlos Ruiz',
-        role: 'teacher',
-        level: 25,
-        avatar: '👨‍🏫'
-      },
-      content: 'Nuevo tutorial disponible: "Optimización de hiperparámetros en modelos de ML". Incluye ejemplos prácticos y mejores prácticas. ¡Espero que les sea útil!',
-      timestamp: '5 horas',
-      likes: 42,
-      comments: 12,
-      tags: ['Tutorial', 'ML', 'Optimización'],
-      type: 'resource'
-    },
-    {
-      id: '3',
-      author: {
-        name: 'Ana Torres',
-        role: 'professional',
-        level: 15,
-        avatar: '👩‍💼'
-      },
-      content: '¿Recomendaciones para implementar IA en el sector financiero? Mi empresa está considerando automatizar el análisis de riesgo crediticio.',
-      timestamp: '1 día',
-      likes: 8,
-      comments: 6,
-      tags: ['Finanzas', 'Implementación', 'Pregunta'],
-      type: 'question'
-    }
-  ]);
+  // Data states
+  const [posts, setPosts] = useState([]);
+  const [discussions, setDiscussions] = useState([]);
+  const [communityStats, setCommunityStats] = useState({
+    totalMembers: 0,
+    activeMembers: 0,
+    postsToday: 0,
+    activeDiscussions: 0
+  });
+  const [trendingTopics, setTrendingTopics] = useState([]);
 
-  const [discussions, setDiscussions] = useState([
-    {
-      id: '1',
-      title: 'Mejores prácticas para el preprocesamiento de datos',
-      author: 'Luis Mendoza',
-      replies: 23,
-      lastActivity: '3 min',
-      category: 'Data Science',
-      isHot: true
-    },
-    {
-      id: '2',
-      title: '¿Cuál es el futuro de GPT y los modelos de lenguaje?',
-      author: 'Sandra López',
-      replies: 45,
-      lastActivity: '1 hora',
-      category: 'NLP',
-      isHot: true
-    },
-    {
-      id: '3',
-      title: 'Compartiendo mi experiencia con transfer learning',
-      author: 'Miguel Ángel',
-      replies: 12,
-      lastActivity: '2 horas',
-      category: 'Deep Learning',
-      isHot: false
-    }
-  ]);
-
+  // Mock leaderboard for now
   const [leaderboard, setLeaderboard] = useState([
     { rank: 1, name: 'Elena Vásquez', xp: 12450, level: 28, role: 'teacher', change: 0 },
     { rank: 2, name: 'Roberto Kim', xp: 11890, level: 26, role: 'professional', change: 1 },
@@ -123,6 +73,48 @@ export function CommunityPage({ onBack, session, userProfile, role }: CommunityP
     { rank: 4, name: 'Diego Morales', xp: 10850, level: 24, role: 'teacher', change: 2 },
     { rank: 5, name: 'Sofía Ramírez', xp: 10400, level: 23, role: 'student', change: 0 },
   ]);
+
+  // Load community data on component mount
+  useEffect(() => {
+    loadCommunityData();
+  }, [session]);
+
+  const loadCommunityData = async () => {
+    if (!session?.access_token) return;
+
+    setIsLoading(true);
+    try {
+      // Load all community data in parallel
+      const [postsResponse, discussionsResponse, statsResponse, trendingResponse] = await Promise.all([
+        apiHelpers.getCommunityPosts(session.access_token),
+        apiHelpers.getCommunityDiscussions(session.access_token),
+        apiHelpers.getCommunityStats(session.access_token),
+        apiHelpers.getTrendingTopics(session.access_token)
+      ]);
+
+      if (postsResponse.success) {
+        setPosts(postsResponse.posts);
+      }
+
+      if (discussionsResponse.success) {
+        setDiscussions(discussionsResponse.discussions);
+      }
+
+      if (statsResponse.success) {
+        setCommunityStats(statsResponse.stats);
+      }
+
+      if (trendingResponse.success) {
+        setTrendingTopics(trendingResponse.trending);
+      }
+
+    } catch (error) {
+      console.error('Error loading community data:', error);
+      toast.error('Error cargando datos de la comunidad');
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   const getRoleColor = () => {
     switch (role) {
@@ -151,41 +143,162 @@ export function CommunityPage({ onBack, session, userProfile, role }: CommunityP
     }
   };
 
-  const handleLike = (postId: string) => {
-    setPosts(posts.map(post => 
-      post.id === postId 
-        ? { ...post, likes: post.likes + 1 }
-        : post
-    ));
+  const handleLike = async (postId: string) => {
+    if (!session?.access_token) return;
+
+    try {
+      const response = await apiHelpers.togglePostLike(session.access_token, postId);
+      
+      if (response.success) {
+        // Update local state
+        setPosts(posts.map(post => 
+          post.id === postId 
+            ? { 
+                ...post, 
+                likesCount: response.likesCount,
+                isLikedByUser: response.liked
+              }
+            : post
+        ));
+      }
+    } catch (error) {
+      console.error('Error toggling like:', error);
+      toast.error('Error al dar me gusta');
+    }
   };
 
-  const handleNewPost = () => {
-    if (newPostContent.trim()) {
-      const newPost = {
-        id: (posts.length + 1).toString(),
-        author: {
-          name: userProfile?.name || 'Usuario',
-          role,
-          level: userProfile?.level || 1,
-          avatar: getRoleIcon(role)
-        },
-        content: newPostContent,
-        timestamp: 'ahora',
-        likes: 0,
-        comments: 0,
-        tags: [],
-        type: 'post'
-      };
-      setPosts([newPost, ...posts]);
-      setNewPostContent('');
-      setShowNewPost(false);
+  const handleNewPost = async () => {
+    if (!newPostContent.trim() || !session?.access_token) return;
+
+    setIsSubmittingPost(true);
+    try {
+      const response = await apiHelpers.createCommunityPost(
+        session.access_token, 
+        newPostContent,
+        [], // tags (could be extracted from content or added via UI)
+        'post' // type
+      );
+      
+      if (response.success) {
+        // Add the new post to the beginning of the list
+        setPosts([response.post, ...posts]);
+        setNewPostContent('');
+        setShowNewPost(false);
+        toast.success(`¡Post creado! +${response.xpGained} XP`);
+      }
+    } catch (error) {
+      console.error('Error creating post:', error);
+      toast.error('Error al crear el post');
+    } finally {
+      setIsSubmittingPost(false);
+    }
+  };
+
+  const handleNewDiscussion = async () => {
+    if (!newDiscussionTitle.trim() || !newDiscussionContent.trim() || !session?.access_token) return;
+
+    setIsSubmittingDiscussion(true);
+    try {
+      const response = await apiHelpers.createDiscussion(
+        session.access_token,
+        newDiscussionTitle,
+        newDiscussionContent,
+        newDiscussionCategory
+      );
+      
+      if (response.success) {
+        // Add the new discussion to the beginning of the list
+        setDiscussions([response.discussion, ...discussions]);
+        setNewDiscussionTitle('');
+        setNewDiscussionContent('');
+        setNewDiscussionCategory('General');
+        setShowNewDiscussion(false);
+        toast.success(`¡Discusión creada! +${response.xpGained} XP`);
+      }
+    } catch (error) {
+      console.error('Error creating discussion:', error);
+      toast.error('Error al crear la discusión');
+    } finally {
+      setIsSubmittingDiscussion(false);
+    }
+  };
+
+  const handleAddComment = async (postId: string) => {
+    if (!newComment.trim() || !session?.access_token) return;
+
+    setIsSubmittingComment(true);
+    try {
+      const response = await apiHelpers.addCommentToPost(
+        session.access_token,
+        postId,
+        newComment
+      );
+      
+      if (response.success) {
+        // Update the post with the new comment
+        setPosts(posts.map(post => 
+          post.id === postId 
+            ? { 
+                ...post, 
+                comments: [...(post.comments || []), response.comment],
+                commentsCount: (post.commentsCount || 0) + 1
+              }
+            : post
+        ));
+        setNewComment('');
+        setCommentingOnPost(null);
+        toast.success(`¡Comentario añadido! +${response.xpGained} XP`);
+      }
+    } catch (error) {
+      console.error('Error adding comment:', error);
+      toast.error('Error al añadir comentario');
+    } finally {
+      setIsSubmittingComment(false);
+    }
+  };
+
+  const handleCommentLike = async (postId: string, commentId: string) => {
+    if (!session?.access_token) return;
+
+    try {
+      const response = await apiHelpers.toggleCommentLike(session.access_token, postId, commentId);
+      
+      if (response.success) {
+        // Update local state
+        setPosts(posts.map(post => 
+          post.id === postId 
+            ? {
+                ...post,
+                comments: post.comments?.map(comment =>
+                  comment.id === commentId
+                    ? {
+                        ...comment,
+                        likes: response.liked 
+                          ? [...(comment.likes || []), session.user?.id]
+                          : (comment.likes || []).filter(id => id !== session.user?.id)
+                      }
+                    : comment
+                )
+              }
+            : post
+        ));
+      }
+    } catch (error) {
+      console.error('Error toggling comment like:', error);
+      toast.error('Error al dar me gusta al comentario');
     }
   };
 
   const filteredPosts = posts.filter(post =>
     post.content.toLowerCase().includes(searchTerm.toLowerCase()) ||
     post.author.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    post.tags.some(tag => tag.toLowerCase().includes(searchTerm.toLowerCase()))
+    (post.tags && post.tags.some(tag => tag.toLowerCase().includes(searchTerm.toLowerCase())))
+  );
+
+  const filteredDiscussions = discussions.filter(discussion =>
+    discussion.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    discussion.author.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    discussion.category.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   return (
@@ -214,6 +327,16 @@ export function CommunityPage({ onBack, session, userProfile, role }: CommunityP
             </div>
             
             <div className="flex items-center space-x-4">
+              {onMessages && (
+                <Button
+                  onClick={onMessages}
+                  style={{ backgroundColor: getRoleColor() }}
+                  className="text-white"
+                >
+                  <MessageCircle className="w-4 h-4 mr-2" />
+                  Mensajes
+                </Button>
+              )}
               <Badge style={{ backgroundColor: getRoleColor(), color: 'white' }}>
                 {userProfile?.name || 'Usuario'}
               </Badge>
@@ -222,6 +345,18 @@ export function CommunityPage({ onBack, session, userProfile, role }: CommunityP
         </header>
 
         <div className="max-w-7xl mx-auto p-6">
+          {/* Loading State */}
+          {isLoading && (
+            <div className="flex items-center justify-center py-12">
+              <div className="text-center">
+                <Loader2 className="w-8 h-8 animate-spin mx-auto mb-4" style={{ color: getRoleColor() }} />
+                <p className="text-gray-600">Cargando comunidad...</p>
+              </div>
+            </div>
+          )}
+
+          {!isLoading && (
+            <>
           {/* Tabs */}
           <div className="flex space-x-1 mb-6">
             <Button
@@ -308,10 +443,14 @@ export function CommunityPage({ onBack, session, userProfile, role }: CommunityP
                               <Button
                                 onClick={handleNewPost}
                                 style={{ backgroundColor: getRoleColor() }}
-                                disabled={!newPostContent.trim()}
+                                disabled={!newPostContent.trim() || isSubmittingPost}
                               >
-                                <Send className="w-4 h-4 mr-2" />
-                                Publicar
+                                {isSubmittingPost ? (
+                                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                                ) : (
+                                  <Send className="w-4 h-4 mr-2" />
+                                )}
+                                {isSubmittingPost ? 'Publicando...' : 'Publicar'}
                               </Button>
                             </div>
                           </div>
@@ -323,6 +462,32 @@ export function CommunityPage({ onBack, session, userProfile, role }: CommunityP
 
                 {/* Posts */}
                 <div className="space-y-4">
+                  {filteredPosts.length === 0 && !isLoading && (
+                    <Card className="bg-white/90">
+                      <CardContent className="p-8 text-center">
+                        <MessageCircle className="w-12 h-12 mx-auto mb-4 text-gray-400" />
+                        <h3 className="text-lg font-semibold text-gray-700 mb-2">
+                          {searchTerm ? 'No se encontraron posts' : '¡Sé el primero en publicar!'}
+                        </h3>
+                        <p className="text-gray-500 mb-4">
+                          {searchTerm 
+                            ? `No hay posts que coincidan con "${searchTerm}"`
+                            : 'Comparte tus experiencias, preguntas o logros con la comunidad'
+                          }
+                        </p>
+                        {!searchTerm && (
+                          <Button
+                            onClick={() => setShowNewPost(true)}
+                            style={{ backgroundColor: getRoleColor() }}
+                          >
+                            <Plus className="w-4 h-4 mr-2" />
+                            Crear Post
+                          </Button>
+                        )}
+                      </CardContent>
+                    </Card>
+                  )}
+                  
                   {filteredPosts.map((post, index) => (
                     <motion.div
                       key={post.id}
@@ -335,7 +500,7 @@ export function CommunityPage({ onBack, session, userProfile, role }: CommunityP
                           {/* Post Header */}
                           <div className="flex items-start space-x-3 mb-4">
                             <div className="w-10 h-10 bg-gradient-to-r from-blue-100 to-purple-100 rounded-full flex items-center justify-center text-lg">
-                              {post.author.avatar}
+                              {getRoleIcon(post.author.role)}
                             </div>
                             <div className="flex-1">
                               <div className="flex items-center space-x-2">
@@ -344,7 +509,14 @@ export function CommunityPage({ onBack, session, userProfile, role }: CommunityP
                                   Nivel {post.author.level}
                                 </Badge>
                                 <span className="text-sm text-gray-500">•</span>
-                                <span className="text-sm text-gray-500">{post.timestamp}</span>
+                                <span className="text-sm text-gray-500">
+                                  {new Date(post.createdAt).toLocaleString('es-ES', {
+                                    hour: '2-digit',
+                                    minute: '2-digit',
+                                    day: '2-digit',
+                                    month: 'short'
+                                  })}
+                                </span>
                               </div>
                             </div>
                           </div>
@@ -370,18 +542,21 @@ export function CommunityPage({ onBack, session, userProfile, role }: CommunityP
                                 variant="ghost"
                                 size="sm"
                                 onClick={() => handleLike(post.id)}
-                                className="text-gray-600 hover:text-red-500"
+                                className={`text-gray-600 hover:text-red-500 ${
+                                  post.isLikedByUser ? 'text-red-500' : ''
+                                }`}
                               >
-                                <Heart className="w-4 h-4 mr-1" />
-                                {post.likes}
+                                <Heart className={`w-4 h-4 mr-1 ${post.isLikedByUser ? 'fill-current' : ''}`} />
+                                {post.likesCount || 0}
                               </Button>
                               <Button
                                 variant="ghost"
                                 size="sm"
+                                onClick={() => setExpandedPost(expandedPost === post.id ? null : post.id)}
                                 className="text-gray-600 hover:text-blue-500"
                               >
                                 <MessageCircle className="w-4 h-4 mr-1" />
-                                {post.comments}
+                                {post.commentsCount || 0}
                               </Button>
                               <Button
                                 variant="ghost"
@@ -400,6 +575,101 @@ export function CommunityPage({ onBack, session, userProfile, role }: CommunityP
                               <Bookmark className="w-4 h-4" />
                             </Button>
                           </div>
+
+                          {/* Expanded Comments Section */}
+                          {expandedPost === post.id && (
+                            <motion.div
+                              initial={{ opacity: 0, height: 0 }}
+                              animate={{ opacity: 1, height: 'auto' }}
+                              exit={{ opacity: 0, height: 0 }}
+                              className="mt-4 pt-4 border-t border-gray-100"
+                            >
+                              {/* Comments List */}
+                              {post.comments && post.comments.length > 0 && (
+                                <div className="space-y-3 mb-4">
+                                  {post.comments.map((comment) => (
+                                    <div key={comment.id} className="flex space-x-3">
+                                      <div className="w-8 h-8 bg-gradient-to-r from-blue-100 to-purple-100 rounded-full flex items-center justify-center text-sm">
+                                        {getRoleIcon(comment.author.role)}
+                                      </div>
+                                      <div className="flex-1">
+                                        <div className="bg-gray-50 rounded-lg p-3">
+                                          <div className="flex items-center space-x-2 mb-1">
+                                            <span className="font-medium text-sm">{comment.author.name}</span>
+                                            <Badge className={getRoleBadgeColor(comment.author.role)} variant="secondary">
+                                              Nivel {comment.author.level || 1}
+                                            </Badge>
+                                            <span className="text-xs text-gray-500">
+                                              {new Date(comment.createdAt).toLocaleString('es-ES', {
+                                                hour: '2-digit',
+                                                minute: '2-digit',
+                                                day: '2-digit',
+                                                month: 'short'
+                                              })}
+                                            </span>
+                                          </div>
+                                          <p className="text-sm text-gray-700">{comment.content}</p>
+                                        </div>
+                                        <div className="flex items-center mt-1">
+                                          <Button
+                                            variant="ghost"
+                                            size="sm"
+                                            onClick={() => handleCommentLike(post.id, comment.id)}
+                                            className={`text-xs text-gray-500 hover:text-red-500 ${
+                                              comment.likes?.includes(session?.user?.id) ? 'text-red-500' : ''
+                                            }`}
+                                          >
+                                            <Heart className={`w-3 h-3 mr-1 ${
+                                              comment.likes?.includes(session?.user?.id) ? 'fill-current' : ''
+                                            }`} />
+                                            {comment.likes?.length || 0}
+                                          </Button>
+                                        </div>
+                                      </div>
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+
+                              {/* Add Comment Form */}
+                              <div className="flex space-x-3">
+                                <div className="w-8 h-8 bg-gradient-to-r from-blue-100 to-purple-100 rounded-full flex items-center justify-center text-sm">
+                                  {getRoleIcon(role)}
+                                </div>
+                                <div className="flex-1">
+                                  <div className="flex space-x-2">
+                                    <Input
+                                      placeholder="Escribe un comentario..."
+                                      value={commentingOnPost === post.id ? newComment : ''}
+                                      onChange={(e) => {
+                                        setNewComment(e.target.value);
+                                        setCommentingOnPost(post.id);
+                                      }}
+                                      onKeyPress={(e) => {
+                                        if (e.key === 'Enter' && !e.shiftKey) {
+                                          e.preventDefault();
+                                          handleAddComment(post.id);
+                                        }
+                                      }}
+                                      disabled={isSubmittingComment}
+                                    />
+                                    <Button
+                                      size="sm"
+                                      onClick={() => handleAddComment(post.id)}
+                                      disabled={!newComment.trim() || isSubmittingComment}
+                                      style={{ backgroundColor: getRoleColor() }}
+                                    >
+                                      {isSubmittingComment ? (
+                                        <Loader2 className="w-4 h-4 animate-spin" />
+                                      ) : (
+                                        <Send className="w-4 h-4" />
+                                      )}
+                                    </Button>
+                                  </div>
+                                </div>
+                              </div>
+                            </motion.div>
+                          )}
                         </CardContent>
                       </Card>
                     </motion.div>
@@ -419,16 +689,20 @@ export function CommunityPage({ onBack, session, userProfile, role }: CommunityP
                   </CardHeader>
                   <CardContent className="space-y-3">
                     <div className="flex justify-between">
+                      <span className="text-gray-600">Miembros totales</span>
+                      <span className="font-semibold">{communityStats.totalMembers || 0}</span>
+                    </div>
+                    <div className="flex justify-between">
                       <span className="text-gray-600">Miembros activos</span>
-                      <span className="font-semibold">2,847</span>
+                      <span className="font-semibold">{communityStats.activeMembers || 0}</span>
                     </div>
                     <div className="flex justify-between">
                       <span className="text-gray-600">Posts hoy</span>
-                      <span className="font-semibold">156</span>
+                      <span className="font-semibold">{communityStats.postsToday || 0}</span>
                     </div>
                     <div className="flex justify-between">
                       <span className="text-gray-600">Discusiones activas</span>
-                      <span className="font-semibold">89</span>
+                      <span className="font-semibold">{communityStats.activeDiscussions || 0}</span>
                     </div>
                   </CardContent>
                 </Card>
@@ -442,11 +716,26 @@ export function CommunityPage({ onBack, session, userProfile, role }: CommunityP
                     </CardTitle>
                   </CardHeader>
                   <CardContent className="space-y-2">
-                    {['#MachineLearning', '#IA', '#DataScience', '#DeepLearning', '#NLP'].map((topic, index) => (
-                      <Badge key={index} variant="outline" className="mr-2 mb-2 cursor-pointer hover:bg-gray-100">
-                        {topic}
-                      </Badge>
-                    ))}
+                    {trendingTopics.length > 0 ? (
+                      trendingTopics.map((topic, index) => (
+                        <div key={index} className="flex items-center justify-between mb-2">
+                          <Badge 
+                            variant="outline" 
+                            className="cursor-pointer hover:bg-gray-100"
+                          >
+                            {topic.topic}
+                          </Badge>
+                          <div className="flex items-center space-x-1">
+                            <span className="text-xs text-gray-500">{topic.count}</span>
+                            {topic.trend === 'up' && (
+                              <TrendingUp className="w-3 h-3 text-green-500" />
+                            )}
+                          </div>
+                        </div>
+                      ))
+                    ) : (
+                      <p className="text-sm text-gray-500">Cargando temas populares...</p>
+                    )}
                   </CardContent>
                 </Card>
               </div>
@@ -458,13 +747,121 @@ export function CommunityPage({ onBack, session, userProfile, role }: CommunityP
             <div className="space-y-4">
               <div className="flex justify-between items-center">
                 <h2 className="text-xl font-semibold">Discusiones Activas</h2>
-                <Button style={{ backgroundColor: getRoleColor() }}>
+                <Button 
+                  onClick={() => setShowNewDiscussion(!showNewDiscussion)}
+                  style={{ backgroundColor: getRoleColor() }}
+                >
                   <Plus className="w-4 h-4 mr-2" />
                   Nueva Discusión
                 </Button>
               </div>
 
-              {discussions.map((discussion, index) => (
+              {/* Search Bar */}
+              <div className="relative">
+                <Search className="absolute left-3 top-3 w-4 h-4 text-gray-400" />
+                <Input
+                  placeholder="Buscar discusiones..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="pl-10"
+                />
+              </div>
+
+              {/* New Discussion Form */}
+              {showNewDiscussion && (
+                <motion.div
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: 'auto' }}
+                  exit={{ opacity: 0, height: 0 }}
+                >
+                  <Card className="bg-white/90">
+                    <CardContent className="p-4">
+                      <div className="space-y-4">
+                        <Input
+                          placeholder="Título de la discusión"
+                          value={newDiscussionTitle}
+                          onChange={(e) => setNewDiscussionTitle(e.target.value)}
+                        />
+                        <select
+                          value={newDiscussionCategory}
+                          onChange={(e) => setNewDiscussionCategory(e.target.value)}
+                          className="w-full p-2 border border-gray-300 rounded-md"
+                        >
+                          <option value="General">General</option>
+                          <option value="IA">Inteligencia Artificial</option>
+                          <option value="Machine Learning">Machine Learning</option>
+                          <option value="Deep Learning">Deep Learning</option>
+                          <option value="Data Science">Data Science</option>
+                          <option value="NLP">Procesamiento de Lenguaje Natural</option>
+                          <option value="Computer Vision">Visión por Computadora</option>
+                          <option value="Ética">Ética en IA</option>
+                          <option value="Proyectos">Proyectos</option>
+                          <option value="Recursos">Recursos y Tutoriales</option>
+                        </select>
+                        <Textarea
+                          placeholder="Describe tu discusión..."
+                          value={newDiscussionContent}
+                          onChange={(e) => setNewDiscussionContent(e.target.value)}
+                          rows={4}
+                        />
+                        <div className="flex justify-end space-x-2">
+                          <Button
+                            variant="outline"
+                            onClick={() => {
+                              setShowNewDiscussion(false);
+                              setNewDiscussionTitle('');
+                              setNewDiscussionContent('');
+                              setNewDiscussionCategory('General');
+                            }}
+                          >
+                            Cancelar
+                          </Button>
+                          <Button
+                            onClick={handleNewDiscussion}
+                            style={{ backgroundColor: getRoleColor() }}
+                            disabled={!newDiscussionTitle.trim() || !newDiscussionContent.trim() || isSubmittingDiscussion}
+                          >
+                            {isSubmittingDiscussion ? (
+                              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                            ) : (
+                              <Plus className="w-4 h-4 mr-2" />
+                            )}
+                            {isSubmittingDiscussion ? 'Creando...' : 'Crear Discusión'}
+                          </Button>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                </motion.div>
+              )}
+
+              {filteredDiscussions.length === 0 && !isLoading && (
+                <Card className="bg-white/90">
+                  <CardContent className="p-8 text-center">
+                    <Users className="w-12 h-12 mx-auto mb-4 text-gray-400" />
+                    <h3 className="text-lg font-semibold text-gray-700 mb-2">
+                      {searchTerm ? 'No se encontraron discusiones' : '¡Inicia una nueva discusión!'}
+                    </h3>
+                    <p className="text-gray-500 mb-4">
+                      {searchTerm 
+                        ? `No hay discusiones que coincidan con "${searchTerm}"`
+                        : 'Las discusiones son una excelente manera de profundizar en temas específicos'
+                      }
+                    </p>
+                    {!searchTerm && (
+                      <Button
+                        onClick={() => setShowNewDiscussion(true)}
+                        style={{ backgroundColor: getRoleColor() }}
+                      >
+                        <Plus className="w-4 h-4 mr-2" />
+                        Nueva Discusión
+                      </Button>
+                    )}
+                  </CardContent>
+                </Card>
+              )}
+
+              {filteredDiscussions.map((discussion, index) => (
                 <motion.div
                   key={discussion.id}
                   initial={{ opacity: 0, y: 20 }}
@@ -484,9 +881,9 @@ export function CommunityPage({ onBack, session, userProfile, role }: CommunityP
                             )}
                           </div>
                           <div className="flex items-center space-x-4 text-sm text-gray-600">
-                            <span>Por {discussion.author}</span>
+                            <span>Por {discussion.author?.name || discussion.author}</span>
                             <span>•</span>
-                            <span>{discussion.replies} respuestas</span>
+                            <span>{discussion.repliesCount || discussion.replies || 0} respuestas</span>
                             <span>•</span>
                             <span>Última actividad: {discussion.lastActivity}</span>
                           </div>
@@ -557,6 +954,8 @@ export function CommunityPage({ onBack, session, userProfile, role }: CommunityP
                 </motion.div>
               ))}
             </div>
+          )}
+            </>
           )}
         </div>
       </div>

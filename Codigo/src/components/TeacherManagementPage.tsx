@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
 import { Button } from "./ui/button";
 import { Badge } from "./ui/badge";
@@ -8,6 +8,7 @@ import { Label } from "./ui/label";
 import { Textarea } from "./ui/textarea";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "./ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "./ui/dialog";
 import { motion } from "motion/react";
 import { DynamicBackground } from "./DynamicBackground";
 import { 
@@ -29,13 +30,23 @@ import {
   CheckCircle,
   Clock,
   AlertCircle,
-  Star
+  Star,
+  Copy,
+  QrCode,
+  UserPlus,
+  Settings,
+  Target,
+  Activity
 } from "lucide-react";
+import { apiHelpers } from "../utils/supabase/client";
+import { toast } from "sonner@2.0.3";
 import logo from 'figma:asset/2b2a7f5a35cc2954a161c6344ab960a250a1a60d.png';
 
 interface TeacherManagementPageProps {
   onBack: () => void;
   onAIAssistant: () => void;
+  onStudentManagement: () => void;
+  session?: any;
 }
 
 interface Course {
@@ -47,6 +58,9 @@ interface Course {
   status: 'active' | 'draft' | 'archived';
   createdAt: string;
   lessons: number;
+  enrolledStudents?: Student[];
+  courseCode?: string;
+  difficulty?: string;
 }
 
 interface Student {
@@ -59,6 +73,31 @@ interface Student {
   totalLessons: number;
   grade: number;
   status: 'active' | 'inactive' | 'at-risk';
+  enrollments?: any[];
+  xp?: number;
+  level?: number;
+}
+
+interface CourseProgress {
+  courseId: string;
+  courseName: string;
+  totalStudents: number;
+  averageProgress: number;
+  completedStudents: number;
+  atRiskStudents: number;
+  students: StudentProgress[];
+}
+
+interface StudentProgress {
+  id: string;
+  name: string;
+  email: string;
+  progress: number;
+  completedLessons: number;
+  totalLessons: number;
+  lastActivity: string;
+  status: 'active' | 'inactive' | 'at-risk';
+  xpEarned: number;
 }
 
 const mockCourses: Course[] = [
@@ -70,7 +109,9 @@ const mockCourses: Course[] = [
     progress: 75,
     status: 'active',
     createdAt: '2024-01-15',
-    lessons: 12
+    lessons: 12,
+    courseCode: 'ANIUET-001',
+    difficulty: 'beginner'
   },
   {
     id: '2',
@@ -80,7 +121,9 @@ const mockCourses: Course[] = [
     progress: 60,
     status: 'active',
     createdAt: '2024-02-20',
-    lessons: 16
+    lessons: 16,
+    courseCode: 'ANIUET-002',
+    difficulty: 'intermediate'
   },
   {
     id: '3',
@@ -90,7 +133,9 @@ const mockCourses: Course[] = [
     progress: 0,
     status: 'draft',
     createdAt: '2024-03-10',
-    lessons: 8
+    lessons: 8,
+    courseCode: 'ANIUET-003',
+    difficulty: 'advanced'
   }
 ];
 
@@ -141,37 +186,164 @@ const mockStudents: Student[] = [
   }
 ];
 
-export function TeacherManagementPage({ onBack, onAIAssistant }: TeacherManagementPageProps) {
+export function TeacherManagementPage({ onBack, onAIAssistant, onStudentManagement, session }: TeacherManagementPageProps) {
   const [activeTab, setActiveTab] = useState('courses');
   const [courses, setCourses] = useState<Course[]>(mockCourses);
-  const [students] = useState<Student[]>(mockStudents);
+  const [students, setStudents] = useState<Student[]>(mockStudents);
   const [showCreateForm, setShowCreateForm] = useState(false);
+  const [selectedCourse, setSelectedCourse] = useState<Course | null>(null);
+  const [courseProgress, setCourseProgress] = useState<CourseProgress | null>(null);
+  const [showStudentModal, setShowStudentModal] = useState(false);
+  const [showCodeModal, setShowCodeModal] = useState(false);
+  const [showProgressModal, setShowProgressModal] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
   const [newCourse, setNewCourse] = useState({
     title: '',
     description: '',
-    lessons: ''
+    lessons: '',
+    difficulty: 'beginner'
   });
+  const [newStudentEmail, setNewStudentEmail] = useState('');
 
-  const handleCreateCourse = () => {
-    if (newCourse.title && newCourse.description) {
-      const course: Course = {
-        id: Date.now().toString(),
-        title: newCourse.title,
-        description: newCourse.description,
-        students: 0,
-        progress: 0,
-        status: 'draft',
-        createdAt: new Date().toISOString().split('T')[0],
-        lessons: parseInt(newCourse.lessons) || 8
-      };
-      setCourses([...courses, course]);
-      setNewCourse({ title: '', description: '', lessons: '' });
-      setShowCreateForm(false);
+  // Load teacher data on component mount
+  useEffect(() => {
+    if (session?.access_token) {
+      loadTeacherData();
+    }
+  }, [session]);
+
+  const loadTeacherData = async () => {
+    try {
+      setIsLoading(true);
+      const studentsData = await apiHelpers.getTeacherStudents(session.access_token);
+      if (studentsData.success) {
+        setStudents(studentsData.students);
+      }
+    } catch (error) {
+      console.error('Error loading teacher data:', error);
+      toast.error('Error al cargar datos del maestro');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleCreateCourse = async () => {
+    if (newCourse.title && newCourse.description && session?.access_token) {
+      try {
+        setIsLoading(true);
+        
+        // Generate course code
+        const courseCode = `ANIUET-${String(Math.floor(Math.random() * 900) + 100)}`;
+        
+        const courseData = {
+          title: newCourse.title,
+          description: newCourse.description,
+          lessons: parseInt(newCourse.lessons) || 8,
+          difficulty: newCourse.difficulty,
+          courseCode: courseCode
+        };
+
+        const result = await apiHelpers.createCourse(session.access_token, courseData);
+        
+        if (result.success) {
+          const course: Course = {
+            id: result.course.id,
+            title: newCourse.title,
+            description: newCourse.description,
+            students: 0,
+            progress: 0,
+            status: 'active',
+            createdAt: new Date().toISOString().split('T')[0],
+            lessons: parseInt(newCourse.lessons) || 8,
+            courseCode: courseCode,
+            difficulty: newCourse.difficulty,
+            enrolledStudents: []
+          };
+          
+          setCourses([...courses, course]);
+          setNewCourse({ title: '', description: '', lessons: '', difficulty: 'beginner' });
+          setShowCreateForm(false);
+          toast.success('Curso creado exitosamente');
+        }
+      } catch (error) {
+        console.error('Error creating course:', error);
+        toast.error('Error al crear el curso');
+      } finally {
+        setIsLoading(false);
+      }
     }
   };
 
   const handleDeleteCourse = (courseId: string) => {
     setCourses(courses.filter(c => c.id !== courseId));
+    toast.success('Curso eliminado');
+  };
+
+  const handleViewCourseStudents = async (course: Course) => {
+    setSelectedCourse(course);
+    setShowStudentModal(true);
+    
+    try {
+      if (session?.access_token) {
+        const progress = await apiHelpers.getCourseProgress(session.access_token, course.id);
+        if (progress.success) {
+          setCourseProgress(progress.data);
+        }
+      }
+    } catch (error) {
+      console.error('Error loading course progress:', error);
+    }
+  };
+
+  const handleGenerateCourseCode = (course: Course) => {
+    setSelectedCourse(course);
+    setShowCodeModal(true);
+  };
+
+  const handleCopyCode = (code: string) => {
+    navigator.clipboard.writeText(code);
+    toast.success('Código copiado al portapapeles');
+  };
+
+  const handleAddStudentToCourse = async () => {
+    if (!newStudentEmail || !selectedCourse || !session?.access_token) return;
+    
+    try {
+      setIsLoading(true);
+      // First add student to teacher's class
+      await apiHelpers.addStudentToClass(session.access_token, newStudentEmail);
+      
+      // Then enroll them in the specific course
+      const student = students.find(s => s.email === newStudentEmail);
+      if (student) {
+        await apiHelpers.enrollStudentInCourse(session.access_token, student.id, selectedCourse.id);
+        toast.success('Estudiante agregado al curso');
+        setNewStudentEmail('');
+        loadTeacherData(); // Refresh data
+      }
+    } catch (error) {
+      console.error('Error adding student to course:', error);
+      toast.error('Error al agregar estudiante');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleViewProgress = async (course: Course) => {
+    setSelectedCourse(course);
+    setShowProgressModal(true);
+    
+    try {
+      if (session?.access_token) {
+        const progress = await apiHelpers.getCourseProgress(session.access_token, course.id);
+        if (progress.success) {
+          setCourseProgress(progress.data);
+        }
+      }
+    } catch (error) {
+      console.error('Error loading course progress:', error);
+      toast.error('Error al cargar progreso del curso');
+    }
   };
 
   const getStatusColor = (status: string) => {
@@ -231,6 +403,10 @@ export function TeacherManagementPage({ onBack, onAIAssistant }: TeacherManageme
           </div>
           
           <div className="flex items-center space-x-3">
+            <Button onClick={onStudentManagement} className="bg-green-600 hover:bg-green-700 text-white">
+              <Users className="w-4 h-4 mr-2" />
+              Gestionar Estudiantes
+            </Button>
             <Button onClick={onAIAssistant} className="bg-purple-600 hover:bg-purple-700 text-white">
               <Bot className="w-4 h-4 mr-2" />
               Asistente IA
@@ -301,7 +477,7 @@ export function TeacherManagementPage({ onBack, onAIAssistant }: TeacherManageme
                 <CardTitle className="text-xl text-[#4285F4]">Crear Nuevo Curso</CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   <div>
                     <Label htmlFor="title">Título del Curso *</Label>
                     <Input
@@ -321,6 +497,19 @@ export function TeacherManagementPage({ onBack, onAIAssistant }: TeacherManageme
                       placeholder="8"
                     />
                   </div>
+                  <div>
+                    <Label htmlFor="difficulty">Dificultad</Label>
+                    <Select value={newCourse.difficulty} onValueChange={(value) => setNewCourse({...newCourse, difficulty: value})}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Seleccionar dificultad" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="beginner">Principiante</SelectItem>
+                        <SelectItem value="intermediate">Intermedio</SelectItem>
+                        <SelectItem value="advanced">Avanzado</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
                 </div>
                 <div>
                   <Label htmlFor="description">Descripción *</Label>
@@ -333,8 +522,8 @@ export function TeacherManagementPage({ onBack, onAIAssistant }: TeacherManageme
                   />
                 </div>
                 <div className="flex space-x-3">
-                  <Button onClick={handleCreateCourse} className="bg-[#4285F4] hover:bg-blue-600 text-white">
-                    Crear Curso
+                  <Button onClick={handleCreateCourse} className="bg-[#4285F4] hover:bg-blue-600 text-white" disabled={isLoading}>
+                    {isLoading ? 'Creando...' : 'Crear Curso'}
                   </Button>
                   <Button onClick={() => setShowCreateForm(false)} variant="outline">
                     Cancelar
@@ -375,6 +564,11 @@ export function TeacherManagementPage({ onBack, onAIAssistant }: TeacherManageme
                               <Badge className={getStatusColor(course.status)}>
                                 {getStatusLabel(course.status)}
                               </Badge>
+                              {course.courseCode && (
+                                <Badge variant="outline" className="text-purple-600">
+                                  {course.courseCode}
+                                </Badge>
+                              )}
                             </div>
                             <p className="text-gray-600 mb-4">{course.description}</p>
                             
@@ -408,10 +602,33 @@ export function TeacherManagementPage({ onBack, onAIAssistant }: TeacherManageme
                             )}
                           </div>
                           
-                          <div className="flex space-x-2 ml-4">
-                            <Button size="sm" variant="outline">
-                              <Eye className="w-4 h-4 mr-1" />
-                              Ver
+                          <div className="flex flex-wrap gap-2 ml-4">
+                            <Button 
+                              size="sm" 
+                              variant="outline"
+                              onClick={() => handleViewCourseStudents(course)}
+                              className="text-blue-600 hover:text-blue-700"
+                            >
+                              <Users className="w-4 h-4 mr-1" />
+                              Estudiantes ({course.students})
+                            </Button>
+                            <Button 
+                              size="sm" 
+                              variant="outline"
+                              onClick={() => handleViewProgress(course)}
+                              className="text-green-600 hover:text-green-700"
+                            >
+                              <BarChart className="w-4 h-4 mr-1" />
+                              Progreso
+                            </Button>
+                            <Button 
+                              size="sm" 
+                              variant="outline"
+                              onClick={() => handleGenerateCourseCode(course)}
+                              className="text-purple-600 hover:text-purple-700"
+                            >
+                              <QrCode className="w-4 h-4 mr-1" />
+                              Código
                             </Button>
                             <Button size="sm" variant="outline">
                               <Edit className="w-4 h-4 mr-1" />
@@ -605,6 +822,251 @@ export function TeacherManagementPage({ onBack, onAIAssistant }: TeacherManageme
           </Tabs>
         </div>
       </main>
+
+      {/* Course Code Modal */}
+      <Dialog open={showCodeModal} onOpenChange={setShowCodeModal}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="text-xl text-[#4285F4]">
+              📋 Código del Curso
+            </DialogTitle>
+          </DialogHeader>
+          {selectedCourse && (
+            <div className="space-y-4">
+              <div className="text-center">
+                <p className="text-gray-600 mb-4">
+                  Comparte este código con tus estudiantes para que puedan inscribirse:
+                </p>
+                <div className="bg-gray-100 p-4 rounded-lg border-2 border-dashed">
+                  <div className="text-3xl font-mono font-bold text-[#4285F4] mb-2">
+                    {selectedCourse.courseCode || `ANIUET-${String(Math.floor(Math.random() * 900) + 100)}`}
+                  </div>
+                  <p className="text-sm text-gray-500">{selectedCourse.title}</p>
+                </div>
+              </div>
+              
+              <div className="flex space-x-2">
+                <Button 
+                  onClick={() => handleCopyCode(selectedCourse.courseCode || `ANIUET-${String(Math.floor(Math.random() * 900) + 100)}`)}
+                  className="flex-1"
+                >
+                  <Copy className="w-4 h-4 mr-2" />
+                  Copiar Código
+                </Button>
+                <Button variant="outline" onClick={() => setShowCodeModal(false)}>
+                  Cerrar
+                </Button>
+              </div>
+              
+              <div className="text-xs text-gray-500 text-center">
+                Los estudiantes pueden usar este código en su panel para acceder al curso
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Course Students Modal */}
+      <Dialog open={showStudentModal} onOpenChange={setShowStudentModal}>
+        <DialogContent className="sm:max-w-4xl">
+          <DialogHeader>
+            <DialogTitle className="text-xl text-[#4285F4]">
+              👥 Estudiantes del Curso
+            </DialogTitle>
+          </DialogHeader>
+          {selectedCourse && (
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <h3 className="text-lg font-medium">{selectedCourse.title}</h3>
+                <Badge className="bg-blue-100 text-blue-800">
+                  {selectedCourse.students} estudiantes
+                </Badge>
+              </div>
+              
+              {/* Add Student */}
+              <div className="border rounded-lg p-4 bg-gray-50">
+                <Label htmlFor="student-email">Agregar Estudiante por Email</Label>
+                <div className="flex space-x-2 mt-2">
+                  <Input
+                    id="student-email"
+                    placeholder="email@estudiante.com"
+                    value={newStudentEmail}
+                    onChange={(e) => setNewStudentEmail(e.target.value)}
+                  />
+                  <Button 
+                    onClick={handleAddStudentToCourse}
+                    disabled={isLoading || !newStudentEmail}
+                  >
+                    <UserPlus className="w-4 h-4 mr-2" />
+                    {isLoading ? 'Agregando...' : 'Agregar'}
+                  </Button>
+                </div>
+              </div>
+
+              {/* Students List */}
+              <div className="max-h-96 overflow-y-auto">
+                {students.length > 0 ? (
+                  <div className="space-y-2">
+                    {students.map((student) => (
+                      <div key={student.id} className="flex items-center justify-between p-3 border rounded-lg">
+                        <div className="flex items-center space-x-3">
+                          <div className="w-10 h-10 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center">
+                            {student.name.charAt(0)}
+                          </div>
+                          <div>
+                            <div className="font-medium">{student.name}</div>
+                            <div className="text-sm text-gray-500">{student.email}</div>
+                          </div>
+                        </div>
+                        <div className="flex items-center space-x-4">
+                          <div className="text-right">
+                            <div className="text-sm font-medium">{student.progress}%</div>
+                            <div className="text-xs text-gray-500">
+                              {student.completedLessons}/{student.totalLessons} lecciones
+                            </div>
+                          </div>
+                          <Badge className={getStatusColor(student.status)}>
+                            {getStatusLabel(student.status)}
+                          </Badge>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-center py-8 text-gray-500">
+                    No hay estudiantes inscritos en este curso
+                  </div>
+                )}
+              </div>
+              
+              <div className="flex justify-end">
+                <Button variant="outline" onClick={() => setShowStudentModal(false)}>
+                  Cerrar
+                </Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Course Progress Modal */}
+      <Dialog open={showProgressModal} onOpenChange={setShowProgressModal}>
+        <DialogContent className="sm:max-w-4xl">
+          <DialogHeader>
+            <DialogTitle className="text-xl text-[#4285F4]">
+              📊 Progreso del Curso
+            </DialogTitle>
+          </DialogHeader>
+          {selectedCourse && (
+            <div className="space-y-6">
+              <div className="flex items-center justify-between">
+                <h3 className="text-lg font-medium">{selectedCourse.title}</h3>
+                <div className="text-right">
+                  <div className="text-2xl font-bold text-[#4285F4]">{selectedCourse.progress}%</div>
+                  <div className="text-sm text-gray-500">Progreso promedio</div>
+                </div>
+              </div>
+              
+              {/* Course Stats */}
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                <Card>
+                  <CardContent className="p-4 text-center">
+                    <Users className="w-8 h-8 text-blue-600 mx-auto mb-2" />
+                    <div className="text-2xl font-bold">{selectedCourse.students}</div>
+                    <div className="text-sm text-gray-600">Total Estudiantes</div>
+                  </CardContent>
+                </Card>
+                
+                <Card>
+                  <CardContent className="p-4 text-center">
+                    <CheckCircle className="w-8 h-8 text-green-600 mx-auto mb-2" />
+                    <div className="text-2xl font-bold">
+                      {students.filter(s => s.progress >= 80).length}
+                    </div>
+                    <div className="text-sm text-gray-600">Completados</div>
+                  </CardContent>
+                </Card>
+                
+                <Card>
+                  <CardContent className="p-4 text-center">
+                    <Clock className="w-8 h-8 text-yellow-600 mx-auto mb-2" />
+                    <div className="text-2xl font-bold">
+                      {students.filter(s => s.progress > 0 && s.progress < 80).length}
+                    </div>
+                    <div className="text-sm text-gray-600">En Progreso</div>
+                  </CardContent>
+                </Card>
+                
+                <Card>
+                  <CardContent className="p-4 text-center">
+                    <AlertCircle className="w-8 h-8 text-red-600 mx-auto mb-2" />
+                    <div className="text-2xl font-bold">
+                      {students.filter(s => s.status === 'at-risk' || s.status === 'inactive').length}
+                    </div>
+                    <div className="text-sm text-gray-600">En Riesgo</div>
+                  </CardContent>
+                </Card>
+              </div>
+
+              {/* Progress Chart */}
+              <div>
+                <h4 className="font-medium mb-4 text-gray-900">Distribución de Progreso</h4>
+                <div className="space-y-3">
+                  <div className="flex justify-between items-center">
+                    <span className="text-sm">Completado (80-100%)</span>
+                    <span className="text-sm font-medium">
+                      {students.filter(s => s.progress >= 80).length} estudiantes
+                    </span>
+                  </div>
+                  <Progress 
+                    value={(students.filter(s => s.progress >= 80).length / Math.max(students.length, 1)) * 100} 
+                    className="h-3" 
+                  />
+                  
+                  <div className="flex justify-between items-center">
+                    <span className="text-sm">En progreso (40-79%)</span>
+                    <span className="text-sm font-medium">
+                      {students.filter(s => s.progress >= 40 && s.progress < 80).length} estudiantes
+                    </span>
+                  </div>
+                  <Progress 
+                    value={(students.filter(s => s.progress >= 40 && s.progress < 80).length / Math.max(students.length, 1)) * 100} 
+                    className="h-3" 
+                  />
+                  
+                  <div className="flex justify-between items-center">
+                    <span className="text-sm">Iniciando (1-39%)</span>
+                    <span className="text-sm font-medium">
+                      {students.filter(s => s.progress > 0 && s.progress < 40).length} estudiantes
+                    </span>
+                  </div>
+                  <Progress 
+                    value={(students.filter(s => s.progress > 0 && s.progress < 40).length / Math.max(students.length, 1)) * 100} 
+                    className="h-3" 
+                  />
+                  
+                  <div className="flex justify-between items-center">
+                    <span className="text-sm">Sin iniciar (0%)</span>
+                    <span className="text-sm font-medium">
+                      {students.filter(s => s.progress === 0).length} estudiantes
+                    </span>
+                  </div>
+                  <Progress 
+                    value={(students.filter(s => s.progress === 0).length / Math.max(students.length, 1)) * 100} 
+                    className="h-3" 
+                  />
+                </div>
+              </div>
+              
+              <div className="flex justify-end">
+                <Button variant="outline" onClick={() => setShowProgressModal(false)}>
+                  Cerrar
+                </Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

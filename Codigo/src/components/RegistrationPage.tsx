@@ -253,7 +253,11 @@ export function RegistrationPage({ role, onBack, onComplete, onTakeQuiz, onRegis
                   value={formData.name}
                   onChange={(e) => handleInputChange('name', e.target.value)}
                   className="mt-1"
+                  placeholder="Tu nombre completo"
                 />
+                <p className="text-xs text-gray-500 mt-1">
+                  📝 Ingresa tu nombre real. Por seriedad educativa, este no podrá modificarse después.
+                </p>
               </div>
 
               <div>
