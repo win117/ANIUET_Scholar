@@ -1,0 +1,78 @@
+=== INSTRUCCIONES PARA INTEGRAR EL SISTEMA DE SUPER USUARIO ===
+
+TODO LO NECESARIO YA ESTÁ CREADO. Solo necesitas hacer 3 cambios pequeños:
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+CAMBIO 1: Archivo /supabase/functions/server/index.tsx
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Línea 5 (después de: import * as kv from "./kv_store.tsx";)
+AGREGAR:
+import { registerAdminRoutes } from "./admin-endpoints.tsx";
+
+Última línea (ANTES de: Deno.serve(app.fetch);)
+AGREGAR:
+registerAdminRoutes(app, authenticateUser);
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+CAMBIO 2: Archivo /App.tsx
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Línea 33 (después de: import { MessagesPage } from "./components/MessagesPage";)
+AGREGAR:
+import { AdminDashboardPage } from "./components/AdminDashboardPage";
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+CAMBIO 3: Archivo /App.tsx (en la sección de renderizado)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Busca donde están los otros {currentState === '...' && ...}
+AGREGAR este bloque:
+
+      {currentState === 'admin' && (
+        <AdminDashboardPage
+          onNavigate={setCurrentState}
+          accessToken={session?.access_token}
+          userProfile={userProfile}
+        />
+      )}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+CÓMO ACCEDER AL PANEL DE ADMIN:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+1. Regístrate o inicia sesión
+2. Necesitas tener role: 'admin' en tu usuario
+3. Luego navega con: setCurrentState('admin')
+4. O agrega un botón en el Dashboard que verifique el rol
+
+Ejemplo de botón:
+{userProfile?.role === 'admin' && (
+  <Button onClick={() => onNavigate('admin')} className="bg-gradient-to-r from-orange-500 to-red-500">
+    🔧 Panel de Administración
+  </Button>
+)}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+FUNCIONALIDADES DEL PANEL:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+✅ Crear cursos nuevos
+✅ Editar cursos existentes
+✅ Agregar lecciones a cursos
+✅ Editar contenido de lecciones (texto, video, PDF)
+✅ Ver todos los usuarios de la plataforma
+✅ Ver estadísticas completas
+✅ Gestionar códigos de curso
+✅ Controlar estado de cursos (activo/borrador/archivado)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ARCHIVOS YA CREADOS:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+✓ /supabase/functions/server/admin-endpoints.tsx (Backend endpoints)
+✓ /components/AdminDashboardPage.tsx (Interfaz visual completa)
+✓ /utils/supabase/client.tsx (Helpers: adminGetCourses, adminSaveCourse, etc.)
+✓ App.tsx actualizado con tipos (UserRole incluye 'admin')
+
+Solo faltan los 3 cambios arriba para que funcione!
