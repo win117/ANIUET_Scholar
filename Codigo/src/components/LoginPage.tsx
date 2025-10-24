@@ -268,7 +268,7 @@ export function LoginPage({ onBack, onLoginSuccess, onPasswordReset }: LoginPage
               <CardTitle className="text-2xl text-[#4285F4]">
                 Iniciar Sesión 🔐
               </CardTitle>
-              <p className="text-gray-600 mt-2">
+              <p className="text-gray-600 mt-2 mb-4">
                 Accede a tu cuenta de ANIUET Scholar
               </p>
             </CardHeader>
