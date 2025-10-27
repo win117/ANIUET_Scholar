@@ -1,3 +1,5 @@
+/* En esta sección se encuentran las APIs que usará la página para manipular la BD  */
+
 import { createClient } from '@supabase/supabase-js';
 import { projectId, publicAnonKey } from './info';
 
@@ -5,11 +7,13 @@ const supabaseUrl = `https://${projectId}.supabase.co`;
 
 export const supabase = createClient(supabaseUrl, publicAnonKey);
 
-// Auth helper functions
+
+//Sección de POST
+// Funcion de ayuda de Auth | Auth helper functions
 export const authHelpers = {
   signUp: async (email: string, password: string, userData: any) => {
     try {
-      // Use the register-with-login endpoint for better handling
+      //Esta sección usa el "register-with-login" endpoint para manejarlo mejor
       const response = await fetch(`https://${projectId}.supabase.co/functions/v1/make-server-5ea56f4e/register-with-login`, {
         method: 'POST',
         headers: {
@@ -24,25 +28,25 @@ export const authHelpers = {
       });
 
       const result = await response.json();
-
+    //Aquí se manejan los escenarios de response
       if (!response.ok) {
-        // Handle different error cases based on status code
+        // Manejo de los distintos tipos de errores 
         if (response.status === 409) {
-          // User already exists
+          // EEl usuario ya existe
           const error = new Error(result.message || result.error || 'Ya existe una cuenta con este correo electrónico');
           error.code = 'user_already_exists';
           error.action = result.action;
           throw error;
         } else if (response.status === 400) {
-          // Validation error
+          // Error de Validación
           throw new Error(result.error || 'Datos de registro inválidos');
         } else {
-          // Other server errors
+          // Error del servidor
           throw new Error(result.error || 'Error del servidor durante el registro');
         }
       }
       
-      // If the backend provided session data, use it
+      // Si se obtuvo datos del backed se usan los datos
       if (result.session && result.user) {
         return { 
           data: { 
@@ -54,7 +58,7 @@ export const authHelpers = {
         };
       }
       
-      // Otherwise, try to sign in manually
+      // De no ser el caso se debe ingresar manualmnente
       const { data, error } = await supabase.auth.signInWithPassword({
         email,
         password,
@@ -62,7 +66,7 @@ export const authHelpers = {
 
       if (error) {
         console.error('Auto-login after registration failed:', error);
-        // Return partial success - user was created but couldn't auto-login
+        // Se regresa un exito parcial, ya que se creo el usuario pero no se auto ingreso
         return { 
           data: { 
             user: result.user, 
@@ -98,11 +102,11 @@ export const authHelpers = {
       if (error) {
         console.error('Supabase sign in error:', error);
         
-        // Handle specific error cases
+        // Se manejan errores especificos
         if (error.message?.includes('Email not confirmed')) {
           console.log('Email not confirmed, attempting automatic confirmation...');
           
-          // Try automatic force confirmation directly
+          // Se intenta hacer una confirmación directamente 
           try {
             const forceResponse = await fetch(`https://${projectId}.supabase.co/functions/v1/make-server-5ea56f4e/auth/force-confirm`, {
               method: 'POST',
@@ -116,7 +120,7 @@ export const authHelpers = {
             if (forceResponse.ok) {
               console.log('Automatic confirmation successful, retrying login...');
               
-              // Wait a moment and retry login
+              // Esperar y volver a intentar el loggin
               await new Promise(resolve => setTimeout(resolve, 2000));
               
               const { data: retryData, error: retryError } = await supabase.auth.signInWithPassword({
@@ -135,14 +139,14 @@ export const authHelpers = {
             console.log('Automatic confirmation failed:', autoConfirmError);
           }
           
-          // If automatic confirmation didn't work, show user options
+          // En caso de que la confirmación automatica no funcione, se muestran otras opciones al usuario 
           const confirmError = new Error('Tu email no está confirmado. Puedes usar la opción "Confirmar Email" o recuperar tu contraseña.');
           confirmError.code = 'email_not_confirmed';
-          confirmError.email = email; // Store email for confirmation attempts
+          confirmError.email = email; // Se almacenan los intentos de confirmacion del correo 
           throw confirmError;
         }
         
-        // Re-throw the original error with better context
+        // Se reenvia el error original con más contexto
         const enhancedError = new Error(error.message);
         enhancedError.code = error.code || 'auth_error';
         enhancedError.status = error.status;
@@ -230,7 +234,7 @@ export const authHelpers = {
       return { data: null, error };
     }
   },
-
+  //APi usada para la actualización de contraseña
   updatePassword: async (email: string, newPassword: string, resetToken: string) => {
     try {
       console.log('Updating password for:', email);
@@ -259,7 +263,7 @@ export const authHelpers = {
     } catch (error) {
       console.error('Password update error:', error);
       
-      // Enhance error with more context
+      // se da mas contexto al error
       if (error.name === 'TypeError' && error.message.includes('fetch')) {
         error.message = 'Error de conexión. Verifica tu internet e intenta nuevamente.';
       }
@@ -267,7 +271,7 @@ export const authHelpers = {
       return { data: null, error };
     }
   },
-
+  //Confirmar usuario
   confirmUser: async (email: string) => {
     try {
       const response = await fetch(`https://${projectId}.supabase.co/functions/v1/make-server-5ea56f4e/auth/confirm-user`, {
@@ -291,7 +295,7 @@ export const authHelpers = {
       return { data: null, error };
     }
   },
-
+  //Confirmación forzosa del usuario
   forceConfirmUser: async (email: string) => {
     try {
       const response = await fetch(`https://${projectId}.supabase.co/functions/v1/make-server-5ea56f4e/auth/force-confirm`, {
@@ -317,7 +321,7 @@ export const authHelpers = {
   }
 };
 
-// API helper functions
+// funciones de ayuda API 
 export const apiHelpers = {
   getUserProfile: async (accessToken: string) => {
     try {
@@ -347,7 +351,7 @@ export const apiHelpers = {
           console.error('Could not parse error response:', parseError);
         }
         
-        // Enhanced error messages based on status code
+        // Se dan mesnajes de error especificos según el resultado
         if (response.status === 401) {
           errorMessage = 'Authentication failed - please log in again';
         } else if (response.status === 404) {
@@ -368,7 +372,7 @@ export const apiHelpers = {
     } catch (error) {
       console.error('Error fetching user profile:', error);
       
-      // Enhance error with more context
+      // Se da más contexto a los errores
       if (error.name === 'TypeError' && error.message.includes('fetch')) {
         throw new Error('Network error - could not connect to server');
       } else if (error.message?.includes('JSON')) {
@@ -445,7 +449,7 @@ export const apiHelpers = {
     } catch (error) {
       console.error('Error fetching user courses:', error);
       
-      // Enhance network errors
+      // notificación de error con información más precisa
       if (error.name === 'TypeError' && error.message.includes('fetch')) {
         error.message = 'Error de conexión. Verifica tu internet e intenta nuevamente.';
       }
@@ -581,7 +585,7 @@ export const apiHelpers = {
     }
   },
 
-  // Test function to check server connectivity and profile endpoint
+  // Test para comprobar la conectividad del servidor y el perfil de endpoint
   testProfileEndpoint: async (accessToken: string) => {
     try {
       console.log('Testing profile endpoint connectivity...');
