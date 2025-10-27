@@ -6,7 +6,7 @@ import * as kv from "./kv_store.tsx";
 
 const app = new Hono();
 
-// Initialize Supabase client
+// Inicializar Supabase client
 const supabase = createClient(
   Deno.env.get('SUPABASE_URL')!,
   Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
@@ -15,7 +15,7 @@ const supabase = createClient(
 // Enable logger
 app.use('*', logger(console.log));
 
-// Enable CORS for all routes and methods
+// Enable CORS para permitir todas las rutas y metodos para la interaccion con las apis y el servidor
 app.use(
   "/*",
   cors({
@@ -27,7 +27,7 @@ app.use(
   }),
 );
 
-// Helper function to authenticate user
+// Funcion de ayuda para la autenticacion de usuario 
 async function authenticateUser(accessToken: string) {
   if (!accessToken) {
     console.log("No access token provided to authenticateUser");
@@ -66,7 +66,7 @@ app.get("/make-server-5ea56f4e/health", (c) => {
   });
 });
 
-// Register user with auto-login endpoint
+// Registrar al usuario con el endpoint auto-login 
 app.post("/make-server-5ea56f4e/register-with-login", async (c) => {
   try {
     const body = await c.req.json();
@@ -74,20 +74,20 @@ app.post("/make-server-5ea56f4e/register-with-login", async (c) => {
 
     console.log("Registration with auto-login attempt for user:", email);
 
-    // Validate required fields
+    // Se validan los campos pertinentes
     if (!email || !password || !name || !role || !aiExperience) {
       return c.json({ error: "Todos los campos obligatorios deben ser completados" }, 400);
     }
 
-    // Validate password strength
+    // Validación de calidad de contraseña
     if (password.length < 6) {
       return c.json({ error: "La contraseña debe tener al menos 6 caracteres" }, 400);
     }
 
-    // Check if user already exists
+    // Revisar si existe el usuario
     const existingUsers = await kv.getByPrefix('user:');
     const existingUser = existingUsers.find(user => user.email?.toLowerCase() === email.toLowerCase());
-    
+    //Se librera un mensaje en caso de haber una cuenta ya registrada.
     if (existingUser) {
       console.log("User already exists in our system:", email);
       return c.json({ 
@@ -97,7 +97,7 @@ app.post("/make-server-5ea56f4e/register-with-login", async (c) => {
       }, 409);
     }
 
-    // Try to create user in Supabase Auth
+    // Se crea el usuario en la supabase auth 
     const { data: createUserData, error: createUserError } = await supabase.auth.admin.createUser({
       email,
       password,
@@ -116,7 +116,7 @@ app.post("/make-server-5ea56f4e/register-with-login", async (c) => {
       return c.json({ error: "Error al crear la cuenta: " + createUserError.message }, 400);
     }
 
-    // Store user data in KV store
+    // Se almaacena la información
     const userId = createUserData.user.id;
     const userData = {
       id: userId,
@@ -136,7 +136,7 @@ app.post("/make-server-5ea56f4e/register-with-login", async (c) => {
 
     await kv.set(`user:${userId}`, userData);
 
-    // Try to sign in
+    // Esta parte se usa para registrarse en la web
     const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
       email,
       password
@@ -167,7 +167,7 @@ app.post("/make-server-5ea56f4e/register-with-login", async (c) => {
   }
 });
 
-// Get user profile
+// Se optiene el usuario
 app.get("/make-server-5ea56f4e/user/profile", async (c) => {
   try {
     console.log("Profile request received");
@@ -187,7 +187,7 @@ app.get("/make-server-5ea56f4e/user/profile", async (c) => {
       return c.json({ error: "Invalid or expired token" }, 401);
     }
 
-    // Try to get user data from KV store
+    // Se busca obtener los datos de usuario
     let userData = await kv.get(`user:${user.id}`);
     
     if (!userData) {
