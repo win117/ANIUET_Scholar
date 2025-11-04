@@ -63,7 +63,7 @@ export function RegistrationPage({ role, onBack, onComplete, onTakeQuiz, onRegis
           title: 'Registro de Profesional 👩‍💼',
           color: '#C4423D',
           fields: [
-            { key: 'workArea', label: 'Área de Especialidad', type: 'select', options: ['Tecnología', 'Finanzas', 'Marketing', 'Operaciones', 'Recursos Humanos', 'Consultoría', 'Otro'] },
+            { key: 'workArea', label: 'Área de Especialidad', type: 'select', options: ['Arquitecto de Sistemas de Inteligencia Artificial', 'Analista de Datos de Negocio', 'Marketing', 'Ciencia de Datos', 'Ingeniero de Datos', 'Otro'] },
             { key: 'company', label: 'Empresa (opcional)', type: 'input', required: false }
           ]
         };
