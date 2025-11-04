@@ -4,6 +4,7 @@ import { GraduationCap, User, BriefcaseBusiness } from "lucide-react";
 import { motion } from "motion/react";
 import { DynamicBackground } from "./DynamicBackground";
 import logo from 'figma:asset/2b2a7f5a35cc2954a161c6344ab960a250a1a60d.png';
+import { FooterBanner } from "./FooterBanner";
 
 interface HomePageProps {
   onRoleSelect: (role: 'student' | 'teacher' | 'professional') => void;
@@ -193,6 +194,8 @@ export function HomePage({ onRoleSelect, onLogin }: HomePageProps) {
         </motion.div>
         */}
       </main>
+      {/* Banner final */}
+      <FooterBanner />
     </div>
   );
 }
