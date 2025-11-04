@@ -62,7 +62,7 @@ export function HomePage({ onRoleSelect, onLogin }: HomePageProps) {
             transition={{ type: "spring", stiffness: 300, damping: 20 }}
           >
             <Card className="cursor-pointer border-2 hover:border-[#E3701B] transition-all duration-300 bg-white/80 backdrop-blur-sm">
-              <CardHeader className="text-center pb-4">
+              <CardHeader className="text-center pb-2">
                 <motion.div 
                   className="mx-auto mb-4 w-16 h-16 bg-[#E3701B]/10 rounded-full flex items-center justify-center"
                   whileHover={{ rotate: 360 }}
@@ -96,7 +96,7 @@ export function HomePage({ onRoleSelect, onLogin }: HomePageProps) {
             transition={{ type: "spring", stiffness: 300, damping: 20 }}
           >
             <Card className="cursor-pointer border-2 hover:border-[#4285F4] transition-all duration-300 bg-white/80 backdrop-blur-sm">
-              <CardHeader className="text-center pb-4">
+              <CardHeader className="text-center pb-2">
                 <motion.div 
                   className="mx-auto mb-4 w-16 h-16 bg-[#4285F4]/10 rounded-full flex items-center justify-center"
                   whileHover={{ rotate: 360 }}
@@ -130,7 +130,7 @@ export function HomePage({ onRoleSelect, onLogin }: HomePageProps) {
             transition={{ type: "spring", stiffness: 300, damping: 20 }}
           >
             <Card className="cursor-pointer border-2 hover:border-[#C4423D] transition-all duration-300 bg-white/80 backdrop-blur-sm">
-              <CardHeader className="text-center pb-4">
+              <CardHeader className="text-center pb-2">
                 <motion.div 
                   className="mx-auto mb-4 w-16 h-16 bg-[#C4423D]/10 rounded-full flex items-center justify-center"
                   whileHover={{ rotate: 360 }}
