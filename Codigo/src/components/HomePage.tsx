@@ -38,7 +38,7 @@ export function HomePage({ onRoleSelect, onLogin }: HomePageProps) {
             transition={{ duration: 0.6, delay: 0.2 }}
             className="text-xl md:text-2xl text-gray-600"
           >
-            Potencia tu aprendizaje con inteligencia artificial
+            Inicia tu camino en IA aplicada
           </motion.p>
         </div>
       </header>
@@ -174,7 +174,7 @@ export function HomePage({ onRoleSelect, onLogin }: HomePageProps) {
         </motion.div>
 
         {/* Test Link */}
-        <motion.div 
+        {/*<motion.div 
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           transition={{ duration: 0.6, delay: 0.7 }}
@@ -191,6 +191,7 @@ export function HomePage({ onRoleSelect, onLogin }: HomePageProps) {
             </Button>
           </motion.div>
         </motion.div>
+        */}
       </main>
     </div>
   );
