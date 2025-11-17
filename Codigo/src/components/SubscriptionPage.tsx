@@ -103,14 +103,10 @@ export function SubscriptionPage({ onBack, role, session, userProfile }: Subscri
         popular: true,
         features: [
           { text: 'Todos los cursos disponibles', included: true },
-          { text: 'Acceso completo a comunidad', included: true },
-          { text: 'Asistente IA avanzado (ilimitado)', included: true },
           { text: 'Certificados digitales verificados', included: true },
           { text: 'Contenido exclusivo mensual', included: true },
           { text: 'Soporte prioritario', included: true },
-          { text: 'Sesiones 1-a-1 con expertos', included: true },
-          { text: 'Proyectos prácticos guiados', included: true },
-          { text: role === 'teacher' ? 'Gestión ilimitada de alumnos' : 'Análisis personalizado', included: true }
+          { text: 'Proyectos prácticos guiados', included: true }
         ]
       }
     ];
