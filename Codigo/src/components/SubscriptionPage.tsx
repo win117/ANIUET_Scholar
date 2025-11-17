@@ -211,7 +211,7 @@ export function SubscriptionPage({ onBack, role, session, userProfile }: Subscri
           </Button>
           
           <div className="flex-1">
-            <h1 className="text-white text-3xl mb-2">Planes y Suscripciones</h1>
+            <h1 className="text-black text-3xl mb-2">Planes y Suscripciones</h1>
             <p className="text-white/70">
               Desbloquea todo el potencial de ANIUET Scholar
             </p>
@@ -420,13 +420,13 @@ export function SubscriptionPage({ onBack, role, session, userProfile }: Subscri
             <div>
               <h3 className="mb-2">¿Qué métodos de pago aceptan?</h3>
               <p className="text-gray-600 text-sm">
-                Aceptamos tarjetas de crédito/débito, PayPal, OXXO y transferencias bancarias. Pronto integraremos MercadoPago.
+                Aceptamos tarjetas de crédito/débito y PayPal.
               </p>
             </div>
             <div>
               <h3 className="mb-2">¿Ofrecen planes para instituciones educativas y empresas?</h3>
               <p className="text-gray-600 text-sm">
-                Sí, ofrecemos soluciones personalizadas con usuarios ilimitados, integración con LMS, API dedicada y soporte 24/7. Contacta a nuestro equipo de ventas para una cotización personalizada.
+                Sí, ofrecemos soluciones personalizadas con usuarios ilimitados, integración con LMS, API dedicada y soporte 24/7. Contacta a nuestro equipo de ventas para una cotización personalizada contacto@aniuet.com.
               </p>
             </div>
           </CardContent>
