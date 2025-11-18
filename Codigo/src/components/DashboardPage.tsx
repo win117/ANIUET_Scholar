@@ -220,7 +220,7 @@ export function DashboardPage({ role, aiLevel, onLogout, onCourseSelect, onLesso
           sidebarItems: [
             { icon: Home, label: 'Dashboard', active: true },
             { icon: BookOpen, label: 'Mis Cursos', action: 'my-courses' },
-            { icon: UserPlus, label: 'Unirse a Clase', action: 'join-class' },
+            { icon: UserPlus, label: 'Unirse a una Clase', action: 'join-class' },
             { icon: Trophy, label: 'Logros', action: 'achievements' },
             { icon: Target, label: 'Objetivos', action: 'goals' },
             { icon: Users, label: 'Comunidad', action: 'community' },
@@ -1079,7 +1079,7 @@ export function DashboardPage({ role, aiLevel, onLogout, onCourseSelect, onLesso
             <DialogDescription className="space-y-2 text-sm">
               <span>Ingresa el código de invitación que te proporcionó tu maestro para unirte a su clase.</span>
               <span className="text-xs sm:text-sm text-blue-600 block">
-                💡 Para probar: usa "Ver códigos disponibles" abajo
+                💡 Haz click abajo para ver los cursos disponibles.
               </span>
             </DialogDescription>
           </DialogHeader>
