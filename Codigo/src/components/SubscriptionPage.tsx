@@ -106,7 +106,9 @@ export function SubscriptionPage({ onBack, role, session, userProfile }: Subscri
           { text: 'Certificados digitales verificados', included: true },
           { text: 'Contenido exclusivo mensual', included: true },
           { text: 'Soporte prioritario', included: true },
-          { text: 'Proyectos prácticos guiados', included: true }
+          { text: 'Proyectos prácticos guiados', included: true },
+          { text: '', included: false },
+          { text: '', included: false }
         ]
       }
     ];
@@ -208,7 +210,7 @@ export function SubscriptionPage({ onBack, role, session, userProfile }: Subscri
           
           <div className="flex-1">
             <h1 className="text-black text-3xl mb-2">Planes y Suscripciones</h1>
-            <p className="text-white/70">
+            <p className="text-black/70">
               Desbloquea todo el potencial de ANIUET Scholar
             </p>
           </div>
@@ -230,14 +232,14 @@ export function SubscriptionPage({ onBack, role, session, userProfile }: Subscri
             <Button
               variant={billingPeriod === 'monthly' ? 'default' : 'ghost'}
               onClick={() => setBillingPeriod('monthly')}
-              className={billingPeriod === 'monthly' ? 'rounded-full' : 'text-white hover:bg-white/10 rounded-full'}
+              className={billingPeriod === 'monthly' ? 'rounded-full' : 'text-gray-500 hover:bg-white/10 rounded-full'}
             >
               Mensual
             </Button>
             <Button
               variant={billingPeriod === 'yearly' ? 'default' : 'ghost'}
               onClick={() => setBillingPeriod('yearly')}
-              className={billingPeriod === 'yearly' ? 'rounded-full' : 'text-white hover:bg-white/10 rounded-full'}
+              className={billingPeriod === 'yearly' ? 'rounded-full' : 'text-gray-500 hover:bg-white/10 rounded-full'}
             >
               Anual
               <Badge className="ml-2 bg-green-500">-20%</Badge>
@@ -259,8 +261,8 @@ export function SubscriptionPage({ onBack, role, session, userProfile }: Subscri
                 transition={{ delay: index * 0.1 }}
               >
                 <Card 
-                  className={`relative overflow-hidden transition-all duration-300 hover:shadow-2xl ${
-                    plan.popular ? 'border-2 border-[#E3701B] shadow-lg' : ''
+                  className={`h-full flex flex-col relative overflow-hidden transition-all duration-300 hover:shadow-2xl ${
+                      plan.popular ? 'border-2 border-[#E3701B] shadow-lg' : ''
                   } ${isCurrentPlan ? 'ring-2 ring-green-500' : ''}`}
                 >
                   {plan.badge && (
@@ -352,7 +354,7 @@ export function SubscriptionPage({ onBack, role, session, userProfile }: Subscri
             transition={{ delay: 0.4 }}
           >
             <Card className="bg-white/90 backdrop-blur-lg">
-              <CardHeader>
+              <CardHeader className="pb-4">
                 <div className="w-12 h-12 bg-[#E3701B] rounded-lg flex items-center justify-center mb-2">
                   <Shield className="h-6 w-6 text-white" />
                 </div>
@@ -370,7 +372,7 @@ export function SubscriptionPage({ onBack, role, session, userProfile }: Subscri
             transition={{ delay: 0.5 }}
           >
             <Card className="bg-white/90 backdrop-blur-lg">
-              <CardHeader>
+              <CardHeader className="pb-4">
                 <div className="w-12 h-12 bg-[#4285F4] rounded-lg flex items-center justify-center mb-2">
                   <Clock className="h-6 w-6 text-white" />
                 </div>
@@ -388,7 +390,7 @@ export function SubscriptionPage({ onBack, role, session, userProfile }: Subscri
             transition={{ delay: 0.6 }}
           >
             <Card className="bg-white/90 backdrop-blur-lg">
-              <CardHeader>
+              <CardHeader className="pb-4">
                 <div className="w-12 h-12 bg-[#C4423D] rounded-lg flex items-center justify-center mb-2">
                   <TrendingUp className="h-6 w-6 text-white" />
                 </div>
